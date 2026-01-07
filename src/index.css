@@ -1,0 +1,1020 @@
+@import "tailwindcss/base";
+@import "tailwindcss/components";
+@import "tailwindcss/utilities";
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap");
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: "Poppins", sans-serif;
+  background-color: #f8f9fa;
+}
+
+/* Responsive Design - Works for all screen sizes */
+html, body, #root {
+  width: 100%;
+  min-height: 100%;
+  min-height: 100dvh; /* Dynamic viewport height for mobile */
+}
+
+#root {
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* Mobile-first base styles */
+@media (max-width: 374px) {
+  html {
+    font-size: 14px;
+  }
+}
+
+/* Small phones (375px - 639px) */
+@media (min-width: 375px) and (max-width: 639px) {
+  html {
+    font-size: 15px;
+  }
+}
+
+/* Large phones / small tablets (640px - 767px) */
+@media (min-width: 640px) and (max-width: 767px) {
+  html {
+    font-size: 16px;
+  }
+}
+
+/* Tablets portrait (768px - 1023px) */
+@media (min-width: 768px) and (max-width: 1023px) {
+  html {
+    font-size: 16px;
+  }
+  
+  #root {
+    min-width: 100%;
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+}
+
+/* Landscape mode on mobile/tablet - compact UI */
+@media (orientation: landscape) and (max-height: 500px) {
+  html {
+    font-size: 12px;
+  }
+  
+  /* Reduce header size in landscape */
+  header {
+    padding-top: 0.25rem !important;
+    padding-bottom: 0.25rem !important;
+  }
+  
+  /* Compact progress steps */
+  .progress-steps {
+    padding-top: 0.25rem !important;
+    padding-bottom: 0.25rem !important;
+  }
+}
+
+/* Medium landscape (501px - 800px height) */
+@media (orientation: landscape) and (min-height: 501px) and (max-height: 800px) {
+  html {
+    font-size: 14px;
+  }
+}
+
+/* Kiosk-specific styles (2160px and above) - Bigger buttons and kiosk-like appearance */
+@media (min-width: 2160px) {
+  #root {
+    width: 100vw;
+    height: 3180px;
+    max-width: 100vw;
+    max-height: 3180px;
+    overflow: hidden;
+  }
+  
+  html, body {
+    width: 100vw;
+    height: 3180px;
+    max-width: 100vw;
+    max-height: 3180px;
+    overflow: hidden;
+  }
+  
+  /* Increase base font size for kiosk */
+  html {
+    font-size: 1.2rem;
+  }
+  
+  /* Make sure all full-screen containers use full kiosk space */
+  .h-screen {
+    height: 3180px !important;
+    max-height: 3180px !important;
+  }
+  
+  /* Compress preferences section for kiosk */
+  .preferences-container {
+    max-height: calc(3180px - 200px) !important;
+    overflow: hidden !important;
+  }
+  
+  /* Kiosk button scaling - make buttons much bigger */
+  .kiosk-button {
+    padding: 2rem 4rem !important;
+    font-size: 2.5rem !important;
+    min-height: 80px !important;
+    border-radius: 1rem !important;
+  }
+  
+  /* Kiosk text scaling */
+  .kiosk-text-large {
+    font-size: 3rem !important;
+  }
+  
+  .kiosk-text-medium {
+    font-size: 2rem !important;
+  }
+  
+  .kiosk-text-small {
+    font-size: 1.5rem !important;
+  }
+  
+  /* Kiosk spacing */
+  .kiosk-spacing {
+    padding: 2rem !important;
+    margin: 1.5rem !important;
+  }
+  
+  /* Kiosk icons */
+  .kiosk-icon {
+    width: 3rem !important;
+    height: 3rem !important;
+  }
+  
+  .kiosk-icon-large {
+    width: 4rem !important;
+    height: 4rem !important;
+  }
+  
+  /* Terms and Conditions - Make much bigger for kiosk */
+  .terms-container {
+    max-width: 2000px !important;
+  }
+  
+  .terms-title {
+    font-size: 5rem !important;
+    margin-bottom: 3rem !important;
+  }
+  
+  .terms-content {
+    font-size: 2rem !important;
+    line-height: 1.8 !important;
+    padding: 3rem !important;
+  }
+  
+  .terms-content p.font-bold {
+    font-size: 2.5rem !important;
+    margin-bottom: 2rem !important;
+  }
+  
+  .terms-content ul {
+    font-size: 1.8rem !important;
+    line-height: 2 !important;
+  }
+  
+  .terms-content li {
+    margin-bottom: 1rem !important;
+    font-size: 1.8rem !important;
+  }
+  
+  .terms-content > p:not(.font-bold) {
+    font-size: 1.8rem !important;
+  }
+  
+  .terms-checkbox {
+    width: 2rem !important;
+    height: 2rem !important;
+  }
+  
+  .terms-checkbox-label {
+    font-size: 2rem !important;
+  }
+}
+
+/* Desktop/Website Mode (1024px to 2159px) - Compact to 100vh */
+@media (min-width: 1024px) and (max-width: 2159px) {
+  #root {
+    width: 100vw;
+    height: 100vh;
+    max-width: 100vw;
+    max-height: 100vh;
+    overflow: hidden;
+  }
+  
+  html, body {
+    width: 100vw;
+    height: 100vh;
+    max-width: 100vw;
+    max-height: 100vh;
+    overflow: hidden;
+  }
+  
+  /* Desktop mode - scale everything to fit 100vh */
+  html {
+    font-size: 0.875rem; /* Slightly smaller base font */
+  }
+  
+  /* Force all full-screen containers to 100vh */
+  .h-screen {
+    height: 100vh !important;
+    max-height: 100vh !important;
+  }
+  
+  /* Desktop-specific compact spacing */
+  .desktop-compress {
+    padding: 0.75rem !important;
+    margin: 0.5rem !important;
+  }
+  
+  /* Compact text sizes for desktop */
+  .desktop-text-sm {
+    font-size: 0.75rem !important;
+  }
+  
+  .desktop-text-base {
+    font-size: 0.875rem !important;
+  }
+  
+  .desktop-text-lg {
+    font-size: 1rem !important;
+  }
+  
+  .desktop-text-xl {
+    font-size: 1.125rem !important;
+  }
+  
+  .desktop-text-2xl {
+    font-size: 1.5rem !important;
+  }
+  
+  .desktop-text-3xl {
+    font-size: 1.875rem !important;
+  }
+  
+  /* Compact buttons for desktop */
+  .desktop-button {
+    padding: 0.5rem 1rem !important;
+    font-size: 0.875rem !important;
+    min-height: 2.5rem !important;
+  }
+  
+  /* Compact icons for desktop */
+  .desktop-icon {
+    width: 1rem !important;
+    height: 1rem !important;
+  }
+  
+  .desktop-icon-sm {
+    width: 0.875rem !important;
+    height: 0.875rem !important;
+  }
+  
+  .desktop-icon-lg {
+    width: 1.25rem !important;
+    height: 1.25rem !important;
+  }
+  
+  /* Compact gaps for desktop */
+  .desktop-gap-1 {
+    gap: 0.25rem !important;
+  }
+  
+  .desktop-gap-2 {
+    gap: 0.5rem !important;
+  }
+  
+  .desktop-gap-3 {
+    gap: 0.75rem !important;
+  }
+  
+  .desktop-gap-4 {
+    gap: 1rem !important;
+  }
+  
+  /* Compact padding for desktop */
+  .desktop-p-2 {
+    padding: 0.5rem !important;
+  }
+  
+  .desktop-p-3 {
+    padding: 0.75rem !important;
+  }
+  
+  .desktop-p-4 {
+    padding: 1rem !important;
+  }
+  
+  /* Compact margins for desktop */
+  .desktop-m-2 {
+    margin: 0.5rem !important;
+  }
+  
+  .desktop-m-3 {
+    margin: 0.75rem !important;
+  }
+  
+  .desktop-m-4 {
+    margin: 1rem !important;
+  }
+  
+  /* Compact border radius for desktop */
+  .desktop-rounded {
+    border-radius: 0.5rem !important;
+  }
+  
+  .desktop-rounded-lg {
+    border-radius: 0.75rem !important;
+  }
+  
+  /* Ensure preferences container fits in 100vh */
+  .preferences-container {
+    max-height: calc(100vh - 100px) !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+  
+  /* Preferences page - Normal sizing for desktop mode */
+  .preferences-page {
+    /* Override compact spacing */
+    padding: 1.5rem !important;
+  }
+  
+  .preferences-page .desktop-step-container {
+    gap: 2rem !important;
+  }
+  
+  .preferences-page .desktop-card {
+    padding: 1.5rem !important;
+    margin-bottom: 1rem !important;
+  }
+  
+  /* Normal text sizes for preferences */
+  .preferences-page .desktop-text-base {
+    font-size: 1rem !important;
+  }
+  
+  .preferences-page .desktop-text-lg {
+    font-size: 1.125rem !important;
+  }
+  
+  .preferences-page .desktop-text-xl {
+    font-size: 1.25rem !important;
+  }
+  
+  .preferences-page .desktop-text-2xl {
+    font-size: 1.5rem !important;
+  }
+  
+  /* Compact step containers */
+  .desktop-step-container {
+    max-height: calc(100vh - 80px) !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+  
+  /* Compact video/camera containers */
+  .desktop-video-container {
+    max-height: calc(100vh - 120px) !important;
+    height: calc(100vh - 120px) !important;
+  }
+  
+  /* Compact modal for desktop */
+  .desktop-modal-content {
+    max-height: 85vh !important;
+    max-width: 90vw !important;
+  }
+  
+  /* Compact grid for desktop */
+  .desktop-grid {
+    gap: 0.75rem !important;
+  }
+  
+  /* Compact form elements */
+  .desktop-input {
+    padding: 0.5rem 0.75rem !important;
+    font-size: 0.875rem !important;
+  }
+  
+  /* Ensure smooth scrolling */
+  * {
+    scroll-behavior: smooth;
+  }
+  
+  /* Compact section spacing */
+  section {
+    margin-bottom: 1rem !important;
+  }
+  
+  /* Compact card spacing in desktop */
+  .card + .card {
+    margin-top: 0.75rem !important;
+  }
+  
+  /* Compact card spacing */
+  .desktop-card {
+    padding: 1rem !important;
+    margin-bottom: 0.75rem !important;
+  }
+  
+  /* Compact modal sizes */
+  .desktop-modal {
+    max-height: 90vh !important;
+    max-width: 90vw !important;
+  }
+  
+  /* Ensure no overflow */
+  * {
+    box-sizing: border-box;
+  }
+  
+  /* Scrollbar styling for desktop */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: #555;
+  }
+}
+
+/* Tablet styles (768px to 1023px) */
+@media (min-width: 768px) and (max-width: 1023px) {
+  #root {
+    min-width: 100%;
+    min-height: 100vh;
+  }
+}
+
+/* Animation Classes */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(50px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.6s ease-out;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.6s ease-out;
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.6s ease-out;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.5s ease-out;
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite linear;
+  background: linear-gradient(
+    to right,
+    transparent 0%,
+    rgba(255, 255, 255, 0.3) 50%,
+    transparent 100%
+  );
+  background-size: 1000px 100%;
+}
+
+/* Progress bar animation */
+@keyframes progress {
+  from {
+    width: 0%;
+  }
+}
+
+.animate-progress {
+  animation: progress 0.8s ease-out;
+}
+
+/* Enhanced button animations */
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+@keyframes button-glow {
+  0%, 100% {
+    box-shadow: 0 0 40px rgba(22, 11, 83, 0.6), 0 0 80px rgba(22, 11, 83, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 60px rgba(22, 11, 83, 0.8), 0 0 120px rgba(22, 11, 83, 0.6);
+  }
+}
+
+/* Scissors fly animation */
+@keyframes scissors-fly-right {
+  0% {
+    transform: translateX(0) scale(1);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(calc(100vw - 300px)) scale(0.8);
+    opacity: 0;
+  }
+}
+
+.scissors-fly-right {
+  animation: scissors-fly-right 1s ease-in-out forwards;
+  pointer-events: none;
+  position: fixed;
+  z-index: 9999;
+}
+
+/* Confetti Animation */
+@keyframes confetti {
+  0% {
+    transform: translateY(0) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100vh) rotate(720deg);
+    opacity: 0;
+  }
+}
+
+.animate-confetti {
+  animation: confetti linear forwards;
+}
+
+/* Button Pulse Animation for Selected Items */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(22, 11, 83, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(22, 11, 83, 0.8), 0 0 60px rgba(147, 51, 234, 0.6);
+  }
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Achievement Pop Animation */
+@keyframes achievement-pop {
+  0% {
+    transform: scale(0) rotate(-180deg);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.2) rotate(0deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+.animate-achievement-pop {
+  animation: achievement-pop 0.5s ease-out;
+}
+
+:root {
+  --background: 0 0% 100%;
+  --foreground: 222.2 84% 4.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 222.2 84% 4.9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222.2 84% 4.9%;
+  --primary: 222.2 47.4% 11.2%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 210 40% 96.1%;
+  --secondary-foreground: 222.2 47.4% 11.2%;
+  --muted: 210 40% 96.1%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+  --accent: 210 40% 96.1%;
+  --accent-foreground: 222.2 47.4% 11.2%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 214.3 31.8% 91.4%;
+  --input: 214.3 31.8% 91.4%;
+  --ring: 222.2 84% 4.9%;
+}
+
+/* Enhanced Range Slider Styling for Hair Length Modal */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #160B53;
+  cursor: pointer;
+  border: 3px solid white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s ease;
+  margin-top: -8px;
+}
+
+input[type="range"]::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 4px 12px rgba(22, 11, 83, 0.5);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #160B53;
+  cursor: pointer;
+  border: 3px solid white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  transition: all 0.2s ease;
+}
+
+input[type="range"]::-moz-range-thumb:hover {
+  transform: scale(1.2);
+  box-shadow: 0 4px 12px rgba(22, 11, 83, 0.5);
+}
+
+input[type="range"]::-ms-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #160B53;
+  cursor: pointer;
+  border: 3px solid white;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 4px;
+}
+
+input[type="range"]::-moz-range-track {
+  height: 8px;
+  border-radius: 4px;
+}
+
+/* Enhanced UI Animations */
+@keyframes bounce-in {
+  0% {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  70% {
+    transform: scale(0.9);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes zoom-in {
+  from {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes spin-slow {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-20px);
+  }
+}
+
+@keyframes glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(22, 11, 83, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(22, 11, 83, 0.8), 0 0 30px rgba(147, 51, 234, 0.6);
+  }
+}
+
+.animate-bounce-in {
+  animation: bounce-in 0.6s ease-out;
+}
+
+.animate-slide-up {
+  animation: slide-up 0.4s ease-out;
+}
+
+.animate-zoom-in {
+  animation: zoom-in 0.3s ease-out;
+}
+
+.animate-spin-slow {
+  animation: spin-slow 3s linear infinite;
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}
+
+.animate-glow {
+  animation: glow 2s ease-in-out infinite;
+}
+
+/* Smooth transitions */
+.transition-smooth {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Glassmorphism effect */
+.glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.glass-dark {
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Hover lift effect */
+.hover-lift {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(135deg, #160B53 0%, #9333EA 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Ripple effect */
+@keyframes ripple {
+  0% {
+    transform: scale(0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+.ripple {
+  position: relative;
+  overflow: hidden;
+}
+
+.ripple::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.6);
+  width: 100px;
+  height: 100px;
+  margin-top: -50px;
+  margin-left: -50px;
+  top: 50%;
+  left: 50%;
+  animation: ripple 0.6s;
+  opacity: 0;
+}
+
+.ripple:active::after {
+  animation: ripple 0.6s;
+}
+
+/* Loading dots */
+@keyframes loading-dots {
+  0%, 20% {
+    content: '.';
+  }
+  40% {
+    content: '..';
+  }
+  60%, 100% {
+    content: '...';
+  }
+}
+
+.loading-dots::after {
+  content: '';
+  animation: loading-dots 1.5s steps(4, end) infinite;
+}
+
+/* Card hover effect */
+.card-hover {
+  transition: all 0.3s ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-8px) scale(1.02);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+}
+
+/* Style Preference Picker Enhancements */
+@keyframes preference-select {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(22, 11, 83, 0.4);
+  }
+  50% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 10px rgba(22, 11, 83, 0);
+  }
+  100% {
+    transform: scale(1.05);
+    box-shadow: 0 0 0 0 rgba(22, 11, 83, 0);
+  }
+}
+
+.animate-preference-select {
+  animation: preference-select 0.4s ease-out;
+}
+
+@keyframes ripple-effect {
+  0% {
+    transform: scale(0);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+.preference-ripple {
+  position: relative;
+  overflow: hidden;
+}
+
+.preference-ripple::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(22, 11, 83, 0.3);
+  width: 100px;
+  height: 100px;
+  margin-top: -50px;
+  margin-left: -50px;
+  top: 50%;
+  left: 50%;
+  transform: scale(0);
+  opacity: 0;
+}
+
+.preference-ripple:active::after {
+  animation: ripple-effect 0.6s ease-out;
+}
+
+/* Preference card hover effect */
+.preference-card {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.preference-card:hover {
+  transform: translateY(-4px);
+}
+
+.preference-card.selected {
+  animation: preference-select 0.4s ease-out;
+}
+
+/* Selection counter pulse */
+@keyframes counter-pulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+}
+
+.animate-counter-pulse {
+  animation: counter-pulse 0.3s ease-out;
+}
