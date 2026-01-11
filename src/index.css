@@ -159,50 +159,6 @@ html, body, #root {
     width: 4rem !important;
     height: 4rem !important;
   }
-  
-  /* Terms and Conditions - Make much bigger for kiosk */
-  .terms-container {
-    max-width: 2000px !important;
-  }
-  
-  .terms-title {
-    font-size: 5rem !important;
-    margin-bottom: 3rem !important;
-  }
-  
-  .terms-content {
-    font-size: 2rem !important;
-    line-height: 1.8 !important;
-    padding: 3rem !important;
-  }
-  
-  .terms-content p.font-bold {
-    font-size: 2.5rem !important;
-    margin-bottom: 2rem !important;
-  }
-  
-  .terms-content ul {
-    font-size: 1.8rem !important;
-    line-height: 2 !important;
-  }
-  
-  .terms-content li {
-    margin-bottom: 1rem !important;
-    font-size: 1.8rem !important;
-  }
-  
-  .terms-content > p:not(.font-bold) {
-    font-size: 1.8rem !important;
-  }
-  
-  .terms-checkbox {
-    width: 2rem !important;
-    height: 2rem !important;
-  }
-  
-  .terms-checkbox-label {
-    font-size: 2rem !important;
-  }
 }
 
 /* Desktop/Website Mode (1024px to 2159px) - Compact to 100vh */

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "../ui/button";
 import { Card, CardContent } from "../ui/card";
-import { Camera, Sparkles, Heart, CheckCircle, X, Loader2, Sparkle, Scan, Brain, CheckCircle2, AlertCircle, AlertTriangle, Palette, ArrowRight, Scissors, Mic, MicOff, ArrowLeft, User, Scissors as ScissorsIcon, Palette as PaletteIcon, Sparkles as SparklesIcon, Type, Volume2, UserCircle, Users, Briefcase, Shirt, Crown, Zap, Leaf, Flame, TrendingUp, Coffee, Music, Gift, Trophy, Star, Award, Target, Maximize2 as Ruler, Settings, Eye, Contrast, Type as TypeIcon, Accessibility } from "lucide-react";
+import { Camera, Sparkles, Heart, CheckCircle, X, Loader2, Sparkle, Scan, Brain, CheckCircle2, AlertCircle, AlertTriangle, Palette, ArrowRight, Scissors, Mic, MicOff, ArrowLeft, User, Scissors as ScissorsIcon, Palette as PaletteIcon, Sparkles as SparklesIcon, Type, Volume2, UserCircle, Users, Briefcase, Shirt, Crown, Zap, Leaf, Flame, TrendingUp, Coffee, Music, Gift, Trophy, Star, Award, Target, Maximize2 as Ruler, Settings, Eye } from "lucide-react";
 import { FaceMesh, FACEMESH_TESSELATION, FACEMESH_RIGHT_EYE, FACEMESH_LEFT_EYE, FACEMESH_FACE_OVAL } from "@mediapipe/face_mesh";
 import { SelfieSegmentation } from "@mediapipe/selfie_segmentation";
 import { drawConnectors, drawLandmarks } from "@mediapipe/drawing_utils";
@@ -32,11 +32,10 @@ export default function ARHairTryOn() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisComplete, setAnalysisComplete] = useState(false);
   const [error, setError] = useState(null);
-  const [currentStep, setCurrentStep] = useState(0); // 0: Logo, -1: Terms, 1: Single Page Input, 7: Camera, 8: Summary, 9: Recommendations
+  const [currentStep, setCurrentStep] = useState(0); // 0: Logo, 1: Single Page Input, 7: Camera, 8: Summary, 9: Recommendations
   const currentStepRef = useRef(0); // Ref for synchronous access in callbacks
   const [showLogo, setShowLogo] = useState(true); // Logo animation state
   const [customDescription, setCustomDescription] = useState(""); // Custom user description
-  const [termsAccepted, setTermsAccepted] = useState(false); // Terms and conditions acceptance
   const [isListening, setIsListening] = useState(false); // Voice-to-text listening state
   const recognitionRef = useRef(null); // Speech recognition ref
   const interimTranscriptRef = useRef(''); // Ref to track interim transcript for cleanup
@@ -53,6 +52,7 @@ export default function ARHairTryOn() {
   const [selectedRecommendationModal, setSelectedRecommendationModal] = useState(null);
   const [generatedImage, setGeneratedImage] = useState(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [isGeneratingRecommendations, setIsGeneratingRecommendations] = useState(false);
   const [capturedUserImage, setCapturedUserImage] = useState(null);
   const [showPhotoPreviewModal, setShowPhotoPreviewModal] = useState(false);
   const [hairImages, setHairImages] = useState({}); // Store loaded hair images for AR overlay (legacy - not used with 3D)
@@ -60,6 +60,7 @@ export default function ARHairTryOn() {
   const [hair3DLoaded, setHair3DLoaded] = useState(false); // Track if 3D hair model is loaded
   const hair3DLoadedRef = useRef(false); // Ref for synchronous access in callbacks
   const [isARModeActive, setIsARModeActive] = useState(false); // AR mode in recommendations step
+  const [appMode, setAppMode] = useState(null); // "ai" for AI recommendations, "ar" for AR try-on
   
   // Keep refs in sync with state for use in callbacks
   useEffect(() => { isARActiveRef.current = isARActive; }, [isARActive]);
@@ -87,6 +88,17 @@ export default function ARHairTryOn() {
     occasion: ""
   });
   
+  // Preference wizard step tracker (1: Gender, 2: Hair Length, 3: Hair Type, 4: Hair Color, 5: Style Preferences, 6: Additional Notes)
+  const [preferenceStep, setPreferenceStep] = useState(1);
+  const preferenceSteps = [
+    { id: 1, name: "Gender", icon: "User" },
+    { id: 2, name: "Hair Length", icon: "Scissors" },
+    { id: 3, name: "Hair Type", icon: "Sparkles" },
+    { id: 4, name: "Hair Color", icon: "Palette" },
+    { id: 5, name: "Style", icon: "Heart" },
+    { id: 6, name: "Notes", icon: "Type" }
+  ];
+  
   // Custom hair color state for "other" option
   const [customHairColor, setCustomHairColor] = useState("#6B4423"); // Default brown
   const [hairLengthValue, setHairLengthValue] = useState(50); // 0-100 for hair length slider
@@ -96,15 +108,6 @@ export default function ARHairTryOn() {
   const [isDraggingColorWheel, setIsDraggingColorWheel] = useState(false);
   const [colorWheelIndicator, setColorWheelIndicator] = useState({ angle: 0, distance: 0.5 }); // angle in degrees, distance as ratio (0-1)
   const [interimTranscript, setInterimTranscript] = useState("");
-
-  // Accessibility Features State
-  const [accessibilitySettings, setAccessibilitySettings] = useState({
-    colorBlindMode: false, // false, "protanopia", "deuteranopia", "tritanopia"
-    highContrast: false,
-    fontSize: "normal", // "small", "normal", "large", "xlarge"
-    reducedMotion: false,
-    showAccessibilityPanel: false
-  });
   const [voiceError, setVoiceError] = useState(null);
   
   // Manual overrides for AI-detected values
@@ -113,320 +116,39 @@ export default function ARHairTryOn() {
     skinTone: null
   });
 
-  // Hairstyle options with detailed metadata for recommendations
+  // Hairstyle options for AR Try-On (Hair2D folder only)
   const hairstyleOptions = [
     { 
       id: 1, 
-      name: "Long Wavy", 
+      name: "Lady Waves", 
       category: "Long",
       hairType: "wavy",
-      gender: "female", // "male", "female", or "both"
-      styleTags: ["Elegant", "Natural", "Trendy"],
-      faceShapeCompatibility: {
-        oval: 95,
-        round: 75,
-        square: 80,
-        oblong: 90,
-        heart: 85,
-        diamond: 70
-      },
-      skinToneCompatibility: {
-        fair: 90,
-        light: 95,
-        medium: 90,
-        olive: 85,
-        tan: 80,
-        brown: 75,
-        dark: 70,
-        deep: 65
-      }
+      gender: "female",
+      image: "/Hair2D/—Pngtree—black partial lady hairstyle silhouette_6123264.png",
     },
     { 
       id: 2, 
-      name: "Bob Cut", 
+      name: "Short Pixie", 
       category: "Short",
       hairType: "straight",
       gender: "female",
-      styleTags: ["Professional", "Classic", "Elegant"],
-      faceShapeCompatibility: {
-        oval: 90,
-        round: 85,
-        square: 80,
-        oblong: 70,
-        heart: 95,
-        diamond: 90
-      },
-      skinToneCompatibility: {
-        fair: 85,
-        light: 90,
-        medium: 95,
-        olive: 90,
-        tan: 85,
-        brown: 80,
-        dark: 75,
-        deep: 70
-      }
+      image: "/Hair2D/—Pngtree—short hairstyles for black young_5552701.png",
     },
-    { 
-      id: 3, 
-      name: "Pixie Cut", 
-      category: "Short",
-      hairType: "straight",
-      gender: "female",
-      styleTags: ["Bold", "Edgy", "Trendy"],
-      faceShapeCompatibility: {
-        oval: 85,
-        round: 70,
-        square: 75,
-        oblong: 90,
-        heart: 80,
-        diamond: 95
-      },
-      skinToneCompatibility: {
-        fair: 80,
-        light: 85,
-        medium: 90,
-        olive: 85,
-        tan: 80,
-        brown: 85,
-        dark: 90,
-        deep: 85
-      }
-    },
-    { 
-      id: 4, 
-      name: "Layered Medium", 
-      category: "Medium",
-      hairType: "wavy",
-      gender: "female",
-      styleTags: ["Natural", "Casual", "Trendy"],
-      faceShapeCompatibility: {
-        oval: 95,
-        round: 90,
-        square: 85,
-        oblong: 80,
-        heart: 90,
-        diamond: 85
-      },
-      skinToneCompatibility: {
-        fair: 90,
-        light: 95,
-        medium: 95,
-        olive: 90,
-        tan: 85,
-        brown: 80,
-        dark: 75,
-        deep: 70
-      }
-    },
-    { 
-      id: 5, 
-      name: "Curly Bob", 
-      category: "Short",
-      hairType: "curly",
-      gender: "female",
-      styleTags: ["Bold", "Natural", "Trendy"],
-      faceShapeCompatibility: {
-        oval: 90,
-        round: 85,
-        square: 90,
-        oblong: 75,
-        heart: 85,
-        diamond: 80
-      },
-      skinToneCompatibility: {
-        fair: 85,
-        light: 90,
-        medium: 95,
-        olive: 90,
-        tan: 85,
-        brown: 90,
-        dark: 95,
-        deep: 90
-      }
-    },
-    { 
-      id: 6, 
-      name: "Straight Long", 
-      category: "Long",
-      hairType: "straight",
-      gender: "female",
-      styleTags: ["Elegant", "Classic", "Professional"],
-      faceShapeCompatibility: {
-        oval: 95,
-        round: 80,
-        square: 75,
-        oblong: 85,
-        heart: 90,
-        diamond: 85
-      },
-      skinToneCompatibility: {
-        fair: 95,
-        light: 90,
-        medium: 85,
-        olive: 80,
-        tan: 75,
-        brown: 70,
-        dark: 65,
-        deep: 60
-      }
-    },
-    // Male hairstyles
     {
-      id: 7,
-      name: "Classic Short",
+      id: 3,
+      name: "Classic Cut",
       category: "Short",
       hairType: "straight",
       gender: "male",
-      styleTags: ["Professional", "Classic", "Clean"],
-      faceShapeCompatibility: {
-        oval: 95,
-        round: 85,
-        square: 90,
-        oblong: 85,
-        heart: 80,
-        diamond: 85
-      },
-      skinToneCompatibility: {
-        fair: 90,
-        light: 95,
-        medium: 95,
-        olive: 90,
-        tan: 85,
-        brown: 80,
-        dark: 75,
-        deep: 70
-      }
+      image: "/Hair2D/—Pngtree—men black hair_9828660.png",
     },
     {
-      id: 8,
-      name: "Undercut",
+      id: 4,
+      name: "Textured Bangs",
       category: "Short",
       hairType: "straight",
       gender: "male",
-      styleTags: ["Trendy", "Edgy", "Bold"],
-      faceShapeCompatibility: {
-        oval: 90,
-        round: 80,
-        square: 95,
-        oblong: 85,
-        heart: 85,
-        diamond: 90
-      },
-      skinToneCompatibility: {
-        fair: 85,
-        light: 90,
-        medium: 95,
-        olive: 90,
-        tan: 85,
-        brown: 85,
-        dark: 90,
-        deep: 85
-      }
-    },
-    {
-      id: 9,
-      name: "Fade Cut",
-      category: "Short",
-      hairType: "straight",
-      gender: "male",
-      styleTags: ["Trendy", "Professional", "Clean"],
-      faceShapeCompatibility: {
-        oval: 95,
-        round: 90,
-        square: 95,
-        oblong: 80,
-        heart: 85,
-        diamond: 90
-      },
-      skinToneCompatibility: {
-        fair: 85,
-        light: 90,
-        medium: 95,
-        olive: 95,
-        tan: 90,
-        brown: 95,
-        dark: 95,
-        deep: 90
-      }
-    },
-    {
-      id: 10,
-      name: "Medium Length Textured",
-      category: "Medium",
-      hairType: "wavy",
-      gender: "male",
-      styleTags: ["Trendy", "Natural", "Casual"],
-      faceShapeCompatibility: {
-        oval: 95,
-        round: 85,
-        square: 85,
-        oblong: 90,
-        heart: 90,
-        diamond: 85
-      },
-      skinToneCompatibility: {
-        fair: 90,
-        light: 95,
-        medium: 95,
-        olive: 90,
-        tan: 85,
-        brown: 80,
-        dark: 75,
-        deep: 70
-      }
-    },
-    {
-      id: 11,
-      name: "Pompadour",
-      category: "Short",
-      hairType: "straight",
-      gender: "male",
-      styleTags: ["Classic", "Elegant", "Professional"],
-      faceShapeCompatibility: {
-        oval: 95,
-        round: 85,
-        square: 90,
-        oblong: 90,
-        heart: 85,
-        diamond: 90
-      },
-      skinToneCompatibility: {
-        fair: 90,
-        light: 95,
-        medium: 90,
-        olive: 85,
-        tan: 80,
-        brown: 75,
-        dark: 70,
-        deep: 65
-      }
-    },
-    {
-      id: 12,
-      name: "Long Hair",
-      category: "Long",
-      hairType: "wavy",
-      gender: "male",
-      styleTags: ["Trendy", "Natural", "Casual"],
-      faceShapeCompatibility: {
-        oval: 90,
-        round: 75,
-        square: 80,
-        oblong: 95,
-        heart: 85,
-        diamond: 80
-      },
-      skinToneCompatibility: {
-        fair: 85,
-        light: 90,
-        medium: 90,
-        olive: 85,
-        tan: 80,
-        brown: 75,
-        dark: 70,
-        deep: 65
-      }
+      image: "/Hair2D/—Pngtree—mens bangs black hair palette_8744035.png",
     },
   ];
 
@@ -636,6 +358,12 @@ export default function ARHairTryOn() {
         const ctx = canvas.getContext('2d');
         const video = videoRef.current;
 
+        // Check if video is ready
+        if (video.readyState < 2) {
+          console.warn("🔍 [FACE MESH] Video not ready, readyState:", video.readyState);
+          return;
+        }
+
         const containerWidth = video.clientWidth || 640;
         const containerHeight = video.clientHeight || 480;
         
@@ -665,6 +393,11 @@ export default function ARHairTryOn() {
         if (results.multiFaceLandmarks && results.multiFaceLandmarks.length > 0) {
           setFaceDetected(true);
           const landmarks = results.multiFaceLandmarks[0];
+          
+          // Debug: Log face detection success periodically
+          if (Math.random() < 0.01) { // Log 1% of the time to avoid spam
+            console.log("🔍 [FACE MESH] ✅ Face detected with", landmarks.length, "landmarks");
+          }
           
           faceLandmarksRef.current = landmarks;
           const headPose = calculateHeadPose(landmarks);
@@ -749,33 +482,40 @@ export default function ARHairTryOn() {
             ctx.fillText(`Roll: ${headPose.roll.toFixed(1)}°`, 10, 50);
           }
 
-          // Scanning logic
-          if (currentStep !== 2 && isPositioned && !isScanning && !scanningCompleteRef.current && !analysisComplete && !startScanningCountdown.current) {
-            startScanning();
-          }
+          // Scanning logic - DISABLED: Let users manually capture
+          // if (currentStep !== 2 && isPositioned && !isScanning && !scanningCompleteRef.current && !analysisComplete && !startScanningCountdown.current) {
+          //   startScanning();
+          // }
           
-          if (!isPositioned && isScanning && startScanningCountdown.current && !scanningCompleteRef.current) {
-            clearInterval(startScanningCountdown.current);
-            startScanningCountdown.current = null;
-            setIsScanning(false);
-            setCountdown(0);
-          }
+          // if (!isPositioned && isScanning && startScanningCountdown.current && !scanningCompleteRef.current) {
+          //   clearInterval(startScanningCountdown.current);
+          //   startScanningCountdown.current = null;
+          //   setIsScanning(false);
+          //   setCountdown(0);
+          // }
 
-          // Face analysis after scanning
-          if (currentStep !== 2 && scanningCompleteRef.current && !analysisComplete && !isAnalyzing && !analysisInitiatedRef.current) {
-            analysisInitiatedRef.current = true;
-            analyzeFaceFromMesh(landmarks, canvas);
-          }
+          // Face analysis after scanning - DISABLED: Manual capture only
+          // if (currentStep !== 2 && scanningCompleteRef.current && !analysisComplete && !isAnalyzing && !analysisInitiatedRef.current) {
+          //   analysisInitiatedRef.current = true;
+          //   analyzeFaceFromMesh(landmarks, canvas);
+          // }
         } else {
           setFaceDetected(false);
           setFacePositioned(false);
           faceLandmarksRef.current = null;
-          if (isScanning && startScanningCountdown.current && !scanningCompleteRef.current) {
-            clearInterval(startScanningCountdown.current);
-            startScanningCountdown.current = null;
-            setIsScanning(false);
-            setCountdown(0);
+          
+          // Debug: Log no face detection periodically
+          if (Math.random() < 0.005) { // Log 0.5% of the time to avoid spam
+            console.log("🔍 [FACE MESH] ❌ No face detected in frame");
           }
+          
+          // Automatic scanning disabled - manual capture only
+          // if (isScanning && startScanningCountdown.current && !scanningCompleteRef.current) {
+          //   clearInterval(startScanningCountdown.current);
+          //   startScanningCountdown.current = null;
+          //   setIsScanning(false);
+          //   setCountdown(0);
+          // }
         }
       });
 
@@ -877,6 +617,8 @@ export default function ARHairTryOn() {
       const cheekY = Math.floor(leftCheek.y * canvas.height);
       
       let skinTone = 'medium';
+      let skinToneObject = { value: 'medium', label: 'Medium', color: '#E0AC69' };
+      
       try {
         const imageData = ctx.getImageData(cheekX - 5, cheekY - 5, 10, 10);
         const data = imageData.data;
@@ -885,17 +627,43 @@ export default function ARHairTryOn() {
           r += data[i]; g += data[i + 1]; b += data[i + 2]; count++;
         }
         const brightness = (r + g + b) / (3 * count);
-        if (brightness > 200) skinTone = 'fair';
-        else if (brightness > 170) skinTone = 'light';
-        else if (brightness > 140) skinTone = 'medium';
-        else if (brightness > 110) skinTone = 'olive';
-        else if (brightness > 80) skinTone = 'tan';
-        else skinTone = 'dark';
-      } catch (e) { /* ignore */ }
+        
+        console.log('🎨 [SKIN TONE] Detected brightness:', brightness, 'from', count, 'pixels');
+        console.log('🎨 [SKIN TONE] Average RGB:', Math.round(r/count), Math.round(g/count), Math.round(b/count));
+        
+        // Map brightness to skin tone with proper objects
+        const skinTones = [
+          { value: "fair", label: "Fair", color: "#FDBCB4", threshold: 200 },
+          { value: "light", label: "Light", color: "#F1C27D", threshold: 180 },
+          { value: "medium", label: "Medium", color: "#E0AC69", threshold: 140 },
+          { value: "olive", label: "Olive", color: "#C68642", threshold: 120 },
+          { value: "tan", label: "Tan", color: "#8D5524", threshold: 100 },
+          { value: "brown", label: "Brown", color: "#654321", threshold: 80 },
+          { value: "dark", label: "Dark", color: "#4A3728", threshold: 60 },
+          { value: "deep", label: "Deep", color: "#2C1810", threshold: 0 },
+        ];
+        
+        // Find matching skin tone
+        for (const tone of skinTones) {
+          if (brightness >= tone.threshold) {
+            skinTone = tone.value;
+            skinToneObject = tone;
+            break;
+          }
+        }
+        
+        console.log('🎨 [SKIN TONE] Final detected skin tone:', skinToneObject);
+      } catch (e) { 
+        console.warn('🎨 [SKIN TONE] Detection failed, using default:', e.message);
+      }
       
       setAiAnalysis({
         facialStructure: `${faceShape} face with ${heightToWidthRatio > 1.3 ? 'elongated' : 'balanced'} proportions`,
-        faceShape, skinColor: null, skinTone, confidence: 0.85, faceDetected: true
+        faceShape, 
+        skinColor: skinToneObject.value, // Use the detected skin tone value
+        skinTone: skinToneObject, // Use the full skin tone object with label and color
+        confidence: 0.85, 
+        faceDetected: true
       });
       
       setAnalysisComplete(true);
@@ -927,13 +695,15 @@ export default function ARHairTryOn() {
 
   // Draw 2D hair overlay on canvas
   const drawHairOverlay2D = (ctx, landmarks, canvasWidth, canvasHeight) => {
-    if (!selectedHairstyleRef.current) return;
+    if (!selectedHairstyleRef.current) {
+      return;
+    }
     
     const styleId = selectedHairstyleRef.current.id;
     const hairImage = hairImageCache.current[styleId];
     
     if (!hairImage) {
-      console.warn('⚠️ [2D] Hair image not loaded for style:', styleId);
+      console.warn('⚠️ [2D] Hair image not loaded for style ID:', styleId, 'Available IDs:', Object.keys(hairImageCache.current));
       return;
     }
     
@@ -1002,6 +772,79 @@ export default function ARHairTryOn() {
     );
     
     ctx.restore();
+  };
+
+  // Manual capture function - gives users control over when to take photo
+  const handleManualCapture = () => {
+    console.log('📸 [MANUAL] User initiated manual capture...');
+    
+    // Check if face is detected
+    if (!faceDetected || !faceLandmarksRef.current) {
+      console.warn('📸 [MANUAL] No face detected - cannot capture');
+      return;
+    }
+    
+    // Start 3 second countdown
+    setIsScanning(true);
+    setCountdown(3);
+    
+    const countdownInterval = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(countdownInterval);
+          setIsScanning(false);
+          
+          // Capture the image after countdown
+          const capturedImage = captureUserFaceImage();
+          
+          if (!capturedImage) {
+            console.error('📸 [MANUAL] Failed to capture image');
+            return 0;
+          }
+          
+          console.log('📸 [MANUAL] ✅ Image captured successfully!');
+          
+          // Perform face analysis if not already done
+          if (!analysisComplete && !isAnalyzing && canvasRef.current && faceLandmarksRef.current) {
+            console.log('🔍 [MANUAL] Starting face analysis...');
+            analysisInitiatedRef.current = true;
+            analyzeFaceFromMesh(faceLandmarksRef.current, canvasRef.current);
+          }
+          
+          // Show photo preview modal
+          setShowPhotoPreviewModal(true);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
+
+  // Test API connection
+  const testAPIConnection = async () => {
+    try {
+      console.log('🧪 [TEST] Testing API connection...');
+      const response = await fetch('http://localhost:3001/api/health');
+      const data = await response.json();
+      console.log('🧪 [TEST] API Health Check:', data);
+      
+      if (data.openrouter_configured) {
+        console.log('✅ [TEST] OpenRouter API is configured');
+        
+        // Test OpenRouter API directly
+        const testResponse = await fetch('http://localhost:3001/api/test-openrouter', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        });
+        const testData = await testResponse.json();
+        console.log('🧪 [TEST] OpenRouter Test:', testData);
+      } else {
+        console.warn('⚠️ [TEST] OpenRouter API not configured');
+      }
+    } catch (error) {
+      console.error('❌ [TEST] API connection failed:', error);
+    }
   };
 
   // Start 3-second scanning countdown
@@ -1097,53 +940,37 @@ export default function ARHairTryOn() {
     console.log('✅ [3D] Three.js initialized');
   };
 
-  // Hair 2D images mapping
-  const hair2DImages = {
-    1: '/Hair2D/—Pngtree—black partial lady hairstyle silhouette_6123264.png', // Long Wavy
-    2: '/Hair2D/—Pngtree—short hairstyles for black young_5552701.png', // Bob Cut
-    3: '/Hair2D/—Pngtree—short hairstyles for black young_5552701.png', // Pixie Cut
-    4: '/Hair2D/—Pngtree—black partial lady hairstyle silhouette_6123264.png', // Layered Medium
-    5: '/Hair2D/—Pngtree—short hairstyles for black young_5552701.png', // Curly Bob
-    6: '/Hair2D/—Pngtree—black partial lady hairstyle silhouette_6123264.png', // Straight Long
-    7: '/Hair2D/—Pngtree—short hairstyles for black young_5552701.png', // Classic Short (male)
-    8: '/Hair2D/—Pngtree—short hairstyles for black young_5552701.png', // Undercut
-    9: '/Hair2D/—Pngtree—short hairstyles for black young_5552701.png', // Fade Cut
-    10: '/Hair2D/—Pngtree—black partial lady hairstyle silhouette_6123264.png', // Medium Length Textured
-    11: '/Hair2D/—Pngtree—short hairstyles for black young_5552701.png', // Pompadour
-    12: '/Hair2D/—Pngtree—black partial lady hairstyle silhouette_6123264.png', // Long Hair (male)
-  };
-
   // Preloaded hair images
   const hairImageCache = useRef({});
 
-  // Load 2D hair overlay images
+  // Load 2D hair overlay images from hairstyleOptions
   const loadHair3DModel = async () => {
-    console.log('🎨 [2D] Loading hair overlay images...');
+    console.log('🎨 [2D] Loading hair overlay images from hairstyleOptions...');
     
-    // Preload all hair images
-    const imagePromises = Object.entries(hair2DImages).map(([id, src]) => {
+    // Preload all hair images from hairstyleOptions
+    const imagePromises = hairstyleOptions.map((style) => {
       return new Promise((resolve) => {
-        if (hairImageCache.current[id]) {
+        if (hairImageCache.current[style.id]) {
           resolve();
           return;
         }
         const img = new Image();
         img.onload = () => {
-          hairImageCache.current[id] = img;
-          console.log(`✅ [2D] Loaded hair image ${id}`);
+          hairImageCache.current[style.id] = img;
+          console.log(`✅ [2D] Loaded hair image ${style.id}: ${style.name}`);
           resolve();
         };
         img.onerror = () => {
-          console.warn(`⚠️ [2D] Failed to load hair image ${id}`);
+          console.warn(`⚠️ [2D] Failed to load hair image ${style.id}: ${style.image}`);
           resolve();
         };
-        img.src = src;
+        img.src = style.image;
       });
     });
     
     await Promise.all(imagePromises);
     setHair3DLoaded(true);
-    console.log('✅ [2D] All hair images ready');
+    console.log('✅ [2D] All hair images ready, count:', Object.keys(hairImageCache.current).length);
   };
 
   // Create a procedural hair model that looks like actual hair
@@ -1858,36 +1685,13 @@ export default function ARHairTryOn() {
     try {
       console.log('🤖 [OPENROUTER] ========================================');
       console.log('🤖 [OPENROUTER] Attempting AI recommendations via OpenRouter...');
+      console.log('🤖 [OPENROUTER] AI will generate dynamic hairstyle recommendations');
       console.log('🤖 [OPENROUTER] ========================================');
-      
-      // 🔥 VALIDATION: Check if hairstyleOptions is available
-      if (!hairstyleOptions || !Array.isArray(hairstyleOptions) || hairstyleOptions.length === 0) {
-        console.log('');
-        console.log('❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌');
-        console.log('❌ [VALIDATION] hairstyleOptions is MISSING or EMPTY');
-        console.log('❌ [VALIDATION] hairstyleOptions:', hairstyleOptions);
-        console.log('❌ [VALIDATION] hairstyleOptions type:', typeof hairstyleOptions);
-        console.log('❌ [VALIDATION] hairstyleOptions is array:', Array.isArray(hairstyleOptions));
-        console.log('❌ [VALIDATION] hairstyleOptions length:', hairstyleOptions?.length || 0);
-        console.log('❌ [VALIDATION] Cannot call AI without hairstyle options');
-        console.log('❌ [VALIDATION] Falling back to rule-based recommendations');
-        console.log('❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌');
-        console.log('');
-        throw new Error('hairstyleOptions is empty or not available');
-      }
-      
-      // Filter hairstyles by gender if specified
-      let filteredHairstyles = hairstyleOptions;
-      if (preferences.gender) {
-        filteredHairstyles = hairstyleOptions.filter(style => 
-          style.gender === preferences.gender || style.gender === "both"
-        );
-      }
       
       // Prepare user data for AI
       const userDataForAI = {
         gender: preferences.gender,
-        faceShape: effectiveFaceShape,
+        faceShape: effectiveFaceShape || 'oval',
         skinTone: effectiveSkinTone,
         hairLength: preferences.hairLength,
         hairType: preferences.hairType,
@@ -1898,20 +1702,11 @@ export default function ARHairTryOn() {
         customDescription: customDescription || undefined
       };
       
-      // 🔥 VALIDATION: Check if userData is valid
-      if (!userDataForAI.faceShape && !effectiveFaceShape) {
-        console.warn('⚠️ [VALIDATION] faceShape is missing, using default');
-        userDataForAI.faceShape = effectiveFaceShape || 'oval';
-      }
-      
       console.log('🤖 [OPENROUTER] User data for AI:', JSON.stringify(userDataForAI, null, 2));
-      console.log('🤖 [OPENROUTER] Available hairstyles:', filteredHairstyles.length);
-      console.log('🤖 [OPENROUTER] First hairstyle:', filteredHairstyles[0]?.name);
-      console.log('🤖 [OPENROUTER] All hairstyle names:', filteredHairstyles.map(h => h.name).join(', '));
       
       // Import and call the recommendation function
       const { getHairRecommendations } = await import('../api/recommendations');
-      const aiRecs = await getHairRecommendations(userDataForAI, filteredHairstyles);
+      const aiRecs = await getHairRecommendations(userDataForAI);
       
       if (aiRecs && aiRecs.length > 0) {
         console.log('🤖 [OPENROUTER] ✅✅✅ Using AI-generated recommendations!', aiRecs.length, 'recommendations');
@@ -1923,10 +1718,8 @@ export default function ARHairTryOn() {
         console.log('⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️');
         console.log('⚠️ [FALLBACK] AI RETURNED NO RECOMMENDATIONS');
         console.log('⚠️ [FALLBACK] FALLING BACK TO RULE-BASED RECOMMENDATIONS');
-        console.log('⚠️ [FALLBACK] THESE ARE NOT AI-GENERATED');
         console.log('⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️');
         console.log('');
-        alert('⚠️ AI recommendations unavailable. Using rule-based recommendations instead.');
       }
     } catch (error) {
       console.log('');
@@ -1934,23 +1727,13 @@ export default function ARHairTryOn() {
       console.log('❌ [FALLBACK] AI RECOMMENDATIONS FAILED');
       console.log('❌ [FALLBACK] Error:', error.message);
       console.log('❌ [FALLBACK] FALLING BACK TO RULE-BASED RECOMMENDATIONS');
-      console.log('❌ [FALLBACK] THESE ARE NOT AI-GENERATED');
       console.log('❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌');
       console.log('');
-      alert('⚠️ AI recommendations failed: ' + error.message + '\n\nUsing rule-based recommendations instead.');
     }
     
     // Fallback to rule-based recommendations
-    console.log('');
-    console.log('📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊');
-    console.log('📊 [RULE-BASED] ========================================');
-    console.log('📊 [RULE-BASED] USING RULE-BASED RECOMMENDATION ALGORITHM');
-    console.log('📊 [RULE-BASED] THESE ARE NOT AI-GENERATED RECOMMENDATIONS');
-    console.log('📊 [RULE-BASED] They are based on simple matching rules');
-    console.log('📊 [RULE-BASED] ========================================');
-    console.log('📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊📊');
-    console.log('');
-    setAreRecommendationsAIGenerated(false); // Mark as NOT AI-generated
+    console.log('📊 [RULE-BASED] Using fallback rule-based recommendations');
+    setAreRecommendationsAIGenerated(false);
     
     // Filter hairstyles by gender if specified
     let availableStyles = hairstyleOptions;
@@ -2143,14 +1926,23 @@ export default function ARHairTryOn() {
     }
     
     setScissorsFlying(true);
-    // Wait for animation to complete (1s), then transition
+    // Wait for animation to complete (1s), then show mode selection
     setTimeout(() => {
       setShowLogo(false);
-      setTimeout(() => {
-        setCurrentStep(-1); // Go to terms and conditions
-        setScissorsFlying(false); // Reset for next time
-      }, 300);
+      setScissorsFlying(false);
     }, 1000);
+  };
+  
+  // Handle mode selection
+  const handleModeSelect = (mode) => {
+    setAppMode(mode);
+    if (mode === 'ai') {
+      setCurrentStep(1); // Go to preferences for AI recommendations
+    } else if (mode === 'ar') {
+      setCurrentStep(2); // Go directly to AR try-on
+      // Pre-load hair images for AR mode
+      loadHair3DModel();
+    }
   };
 
   // Note: Preference steps are now handled in a single page (step 1)
@@ -2216,13 +2008,18 @@ export default function ARHairTryOn() {
   // Apply hairstyle in AR
   const applyHairstyle = (hairstyle) => {
     setSelectedHairstyle(hairstyle);
-    // In a real implementation, this would apply the hairstyle to the AR view
-    console.log("Applying hairstyle:", hairstyle);
+    console.log("🎨 [AR] Applying hairstyle:", hairstyle.name, "ID:", hairstyle.id);
+    console.log("🎨 [AR] Hair image cache status:", Object.keys(hairImageCache.current));
+    console.log("🎨 [AR] hair3DLoaded:", hair3DLoaded);
+    console.log("🎨 [AR] isARActive:", isARActive);
   };
 
   // Capture user's face image from video/canvas
   const captureUserFaceImage = () => {
-    if (!videoRef.current && !canvasRef.current) {
+    // Check if we have a valid source to capture from
+    const source = videoRef.current || canvasRef.current;
+    
+    if (!source) {
       console.warn('No video or canvas available to capture');
       return null;
     }
@@ -2231,30 +2028,90 @@ export default function ARHairTryOn() {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       
-      // Use video if available, otherwise use canvas
-      const source = videoRef.current || canvasRef.current;
+      if (!ctx) {
+        console.error('Failed to get canvas context');
+        return null;
+      }
       
-      if (source) {
-        canvas.width = source.videoWidth || source.width || 640;
-        canvas.height = source.videoHeight || source.height || 480;
-        
-        // Draw the source to canvas and mirror it to match what user sees
-        if (source instanceof HTMLVideoElement) {
-          // Mirror the video to match the preview
-          ctx.save();
-          ctx.scale(-1, 1); // Flip horizontally
-          ctx.drawImage(source, -canvas.width, 0, canvas.width, canvas.height);
-          ctx.restore();
-        } else if (source instanceof HTMLCanvasElement) {
-          // Canvas is already mirrored for display, so just copy it
-          ctx.drawImage(source, 0, 0);
+      // Get source dimensions
+      let sourceWidth, sourceHeight;
+      if (source instanceof HTMLVideoElement) {
+        sourceWidth = source.videoWidth || source.clientWidth || 640;
+        sourceHeight = source.videoHeight || source.clientHeight || 480;
+      } else if (source instanceof HTMLCanvasElement) {
+        sourceWidth = source.width || 640;
+        sourceHeight = source.height || 480;
+      }
+      
+      // Calculate portrait crop (3:4 aspect ratio) from center
+      const targetAspect = 3 / 4; // Portrait aspect ratio
+      let cropWidth, cropHeight, cropX, cropY;
+      
+      if (sourceWidth / sourceHeight > targetAspect) {
+        // Source is wider than target - crop width
+        cropHeight = sourceHeight;
+        cropWidth = cropHeight * targetAspect;
+        cropX = (sourceWidth - cropWidth) / 2;
+        cropY = 0;
+      } else {
+        // Source is taller than target - crop height
+        cropWidth = sourceWidth;
+        cropHeight = cropWidth / targetAspect;
+        cropX = 0;
+        cropY = (sourceHeight - cropHeight) / 2;
+      }
+      
+      // Set canvas to portrait dimensions
+      canvas.width = cropWidth;
+      canvas.height = cropHeight;
+      
+      if (canvas.width === 0 || canvas.height === 0) {
+        console.error('Invalid canvas dimensions:', canvas.width, 'x', canvas.height);
+        return null;
+      }
+      
+      // Draw the source to canvas and mirror it to match what user sees
+      if (source instanceof HTMLVideoElement) {
+        // Check if video is ready
+        if (source.readyState < 2) {
+          console.warn('Video not ready for capture, readyState:', source.readyState);
+          return null;
         }
         
-        // Convert to base64
+        // Mirror the video and crop to portrait
+        ctx.save();
+        ctx.scale(-1, 1); // Flip horizontally
+        ctx.drawImage(
+          source, 
+          cropX, cropY, cropWidth, cropHeight,  // Source crop
+          -canvas.width, 0, canvas.width, canvas.height  // Destination (mirrored)
+        );
+        ctx.restore();
+      } else if (source instanceof HTMLCanvasElement) {
+        // Canvas is already mirrored for display, crop to portrait
+        ctx.drawImage(
+          source,
+          cropX, cropY, cropWidth, cropHeight,
+          0, 0, canvas.width, canvas.height
+        );
+      }
+      
+      // Convert to base64 with error handling
+      try {
         const imageData = canvas.toDataURL('image/jpeg', 0.9);
+        
+        // Validate the image data
+        if (!imageData || imageData === 'data:,') {
+          console.error('Failed to generate image data');
+          return null;
+        }
+        
         setCapturedUserImage(imageData);
-        console.log('📸 [CAPTURE] User face image captured (mirrored)');
+        console.log('📸 [CAPTURE] User face image captured (portrait crop), size:', imageData.length, 'chars');
         return imageData;
+      } catch (error) {
+        console.error('Error converting canvas to data URL:', error);
+        return null;
       }
     } catch (error) {
       console.error('Error capturing user image:', error);
@@ -2323,17 +2180,32 @@ export default function ARHairTryOn() {
 
   // Generate image of user with recommended hairstyle using OpenRouter
   const handleGenerateImage = async () => {
-    if (!selectedRecommendationModal) return;
+    if (!selectedRecommendationModal) {
+      console.error('❌ [IMAGE] No hairstyle selected for generation');
+      return;
+    }
 
     setIsGeneratingImage(true);
     setGeneratedImage(null);
 
     try {
+      console.log('🎨 [IMAGE] Starting image generation process...');
+      
       // Use captured image from scanning, or try to capture now if not available
       let userImage = capturedUserImage;
       
       if (!userImage) {
         console.log('📸 [IMAGE] No saved image found, attempting to capture now...');
+        
+        // Check if camera is active and video is ready
+        if (!videoRef.current || !videoRef.current.srcObject) {
+          throw new Error('❌ [IMAGE] Camera is not active! Please start the camera first.');
+        }
+        
+        if (videoRef.current.readyState < 2) {
+          throw new Error('❌ [IMAGE] Camera is not ready! Please wait for the camera to load.');
+        }
+        
         userImage = captureUserFaceImage();
       } else {
         console.log('📸 [IMAGE] Using saved face image from scanning');
@@ -2342,6 +2214,8 @@ export default function ARHairTryOn() {
       if (!userImage) {
         throw new Error('❌ [IMAGE] No user photo available! Cannot generate image-to-image without your photo!');
       }
+
+      console.log('✅ [IMAGE] User image available, size:', userImage.length, 'chars');
 
       // Compress and resize image before sending
       console.log('🖼️ [IMAGE] Compressing image before sending to API...');
@@ -2804,9 +2678,14 @@ export default function ARHairTryOn() {
   }, []);
 
   // Handle Continue from photo preview modal
-  const handleContinueFromPreview = () => {
+  const handleContinueFromPreview = async () => {
+    setIsGeneratingRecommendations(true);
+    // Generate recommendations directly and go to results
+    const recs = await calculateRecommendations();
+    setRecommendations(recs.slice(0, 6)); // Show top 6
+    setIsGeneratingRecommendations(false);
     setShowPhotoPreviewModal(false);
-    // Continue with the analysis - photo is already saved
+    setCurrentStep(9); // Go directly to Recommendations
   };
 
   // Text-to-Speech Helper Function (disabled - was only for blind mode)
@@ -2843,112 +2722,107 @@ export default function ARHairTryOn() {
     }
   };
 
-  // Step -1: Terms and Conditions
-  if (currentStep === -1) {
-    return (
-      <div className="h-screen w-screen bg-white flex flex-col items-center justify-center min-h-screen kiosk:h-[3180px] kiosk:max-h-[3180px] overflow-hidden">
-        <div className="terms-container w-full max-w-[2000px] mx-auto px-4 py-4 sm:px-8 sm:py-6 lg:px-16 lg:py-8 xl:px-24 xl:py-10 kiosk:px-32 kiosk:py-12 flex flex-col h-full justify-center">
-          <div className="text-center mb-4 sm:mb-6 lg:mb-8 kiosk:mb-12">
+  // Step 0: Logo Screen & Mode Selection
+  if (currentStep === 0) {
+    // Show logo with start button
+    if (showLogo) {
+      return (
+        <div className={`h-screen w-screen bg-white flex items-center justify-center transition-opacity duration-500 min-h-screen ${showLogo ? 'opacity-100' : 'opacity-0'}`}>
+          <div className="text-center animate-scale-in w-full max-w-[1600px] px-4 sm:px-8 lg:px-16 xl:px-24">
             <img 
               src="/logo.jpg" 
               alt="David Salon Logo" 
-              className="mx-auto mb-4 sm:mb-6 lg:mb-8 kiosk:mb-12 h-12 sm:h-16 lg:h-20 xl:h-24 kiosk:h-40 object-contain"
+              className="mx-auto mb-8 sm:mb-12 lg:mb-16 xl:mb-20 max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg xl:max-w-2xl 2xl:max-w-3xl animate-scale-in"
+              style={{ animationDelay: '0.2s' }}
             />
-            <h1 className="terms-title text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl 2xl:text-7xl kiosk:text-9xl font-bold text-gray-800 mb-2 sm:mb-4 lg:mb-6 kiosk:mb-8">Terms and Conditions</h1>
-          </div>
-          
-          <div className="bg-gray-50 rounded-xl sm:rounded-2xl lg:rounded-3xl p-4 sm:p-6 lg:p-8 xl:p-10 kiosk:p-16 mb-4 sm:mb-6 lg:mb-8 kiosk:mb-12 border-2 sm:border-4 kiosk:border-8 border-gray-200 flex-1 overflow-y-auto min-h-0">
-            <div className="terms-content text-sm sm:text-base md:text-lg lg:text-xl xl:text-2xl 2xl:text-3xl kiosk:text-4xl text-gray-700 space-y-2 sm:space-y-3 lg:space-y-4 kiosk:space-y-6 leading-relaxed">
-              <p className="font-bold text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl 2xl:text-5xl kiosk:text-6xl mb-3 sm:mb-4 lg:mb-6 kiosk:mb-8">Privacy and Data Usage</p>
-              <p className="kiosk:text-3xl">By using this kiosk, you consent to:</p>
-              <ul className="list-disc list-inside space-y-2 sm:space-y-3 kiosk:space-y-4 ml-2 sm:ml-4 kiosk:ml-6">
-                <li>Your photo being captured and processed for hairstyle recommendations</li>
-                <li>Your preferences being used to generate AI-powered recommendations</li>
-                <li>Images being temporarily stored for the duration of your session</li>
-              </ul>
-              
-              <p className="font-bold text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl 2xl:text-5xl kiosk:text-6xl mt-4 sm:mt-6 lg:mt-8 kiosk:mt-10 mb-3 sm:mb-4 lg:mb-6 kiosk:mb-8">Service Usage</p>
-              <ul className="list-disc list-inside space-y-2 sm:space-y-3 kiosk:space-y-4 ml-2 sm:ml-4 kiosk:ml-6">
-                <li>This service is for demonstration purposes only</li>
-                <li>Hairstyle recommendations are suggestions, not guarantees</li>
-                <li>Results may vary based on individual features</li>
-              </ul>
-              
-              <p className="font-bold text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl 2xl:text-5xl kiosk:text-6xl mt-4 sm:mt-6 lg:mt-8 kiosk:mt-10 mb-3 sm:mb-4 lg:mb-6 kiosk:mb-8">Limitations</p>
-              <ul className="list-disc list-inside space-y-2 sm:space-y-3 kiosk:space-y-4 ml-2 sm:ml-4 kiosk:ml-6">
-                <li>Camera access is required for face detection</li>
-                <li>Good lighting is recommended for best results</li>
-                <li>Service availability may vary</li>
-              </ul>
+            <div className="mt-8 sm:mt-12 lg:mt-16 xl:mt-20 animate-fade-in" style={{ animationDelay: '0.5s' }}>
+              <button
+                ref={scissorsButtonRef}
+                onClick={handleStart}
+                className={`bg-[#160B53] hover:bg-[#12094A] text-white p-6 sm:p-8 md:p-10 lg:p-12 xl:p-14 2xl:p-16 kiosk:p-24 rounded-full shadow-lg kiosk:shadow-[0_20px_60px_rgba(0,0,0,0.3)] border-0 cursor-pointer ${
+                  scissorsFlying ? 'scissors-fly-right' : 'hover:scale-110 transition-all duration-300'
+                }`}
+                disabled={scissorsFlying}
+                style={scissorsFlying ? {
+                  position: 'fixed',
+                  left: scissorsPosition.left + 'px',
+                  top: scissorsPosition.top + 'px',
+                  zIndex: 9999
+                } : {}}
+              >
+                <Scissors 
+                  className="h-12 w-12 sm:h-16 sm:w-16 md:h-20 md:w-20 lg:h-24 lg:w-24 xl:h-28 xl:w-28 2xl:h-32 2xl:w-32 kiosk:h-48 kiosk:w-48" 
+                  style={{
+                    transform: scissorsFlying ? 'rotate(360deg)' : 'none',
+                    transition: scissorsFlying ? 'transform 1s ease-in-out' : 'none'
+                  }}
+                />
+              </button>
             </div>
           </div>
-          
-          <div className="flex items-center justify-center gap-4 sm:gap-6 lg:gap-8 kiosk:gap-12 flex-shrink-0">
-            <label className="flex items-center gap-2 sm:gap-3 lg:gap-4 kiosk:gap-6 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={termsAccepted}
-                onChange={(e) => setTermsAccepted(e.target.checked)}
-                className="terms-checkbox w-6 h-6 sm:w-8 sm:h-8 lg:w-10 lg:h-10 xl:w-12 xl:h-12 kiosk:w-20 kiosk:h-20 cursor-pointer"
-              />
-              <span className="terms-checkbox-label text-sm sm:text-base md:text-lg lg:text-xl xl:text-2xl 2xl:text-4xl kiosk:text-5xl text-gray-700">I agree to the terms and conditions</span>
-            </label>
-          </div>
-
-          <div className="flex justify-center mt-4 sm:mt-6 lg:mt-8 kiosk:mt-12 flex-shrink-0">
-            <Button
-              onClick={() => {
-                if (termsAccepted) {
-                  setCurrentStep(1);
-                } else {
-                  alert('Please accept the terms and conditions to continue');
-                }
-              }}
-              disabled={!termsAccepted}
-              className="px-12 py-3 sm:px-16 sm:py-4 md:px-20 md:py-5 lg:px-24 lg:py-6 xl:px-32 xl:py-8 2xl:px-40 2xl:py-10 kiosk:px-64 kiosk:py-16 text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl 2xl:text-2xl kiosk:text-3xl font-bold bg-[#160B53] hover:bg-[#12094A] text-white rounded-lg sm:rounded-xl lg:rounded-2xl kiosk:rounded-3xl shadow-xl sm:shadow-2xl kiosk:shadow-[0_20px_60px_rgba(0,0,0,0.3)] disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-105 kiosk:hover:scale-110"
-            >
-              Continue
-              <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 lg:h-8 lg:w-8 xl:h-10 xl:w-10 kiosk:h-20 kiosk:w-20 ml-2 sm:ml-3 lg:ml-4 kiosk:ml-8 inline" />
-            </Button>
-          </div>
         </div>
-      </div>
-    );
-  }
-
-  // Step 0: Logo Screen - Kiosk Large with Start Button
-  if (currentStep === 0) {
+      );
+    }
+    
+    // Show mode selection after logo animation
     return (
-      <div className={`h-screen w-screen bg-white flex items-center justify-center transition-opacity duration-500 min-h-screen ${showLogo ? 'opacity-100' : 'opacity-0'}`}>
-        <div className="text-center animate-scale-in w-full max-w-[1600px] px-4 sm:px-8 lg:px-16 xl:px-24">
-          <img 
-            src="/logo.jpg" 
-            alt="David Salon Logo" 
-            className="mx-auto mb-8 sm:mb-12 lg:mb-16 xl:mb-20 max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg xl:max-w-2xl 2xl:max-w-3xl animate-scale-in"
-            style={{ animationDelay: '0.2s' }}
-          />
-          <div className="mt-8 sm:mt-12 lg:mt-16 xl:mt-20 animate-fade-in" style={{ animationDelay: '0.5s' }}>
+      <div className="h-screen w-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 flex items-center justify-center min-h-screen animate-fade-in">
+        <div className="text-center w-full max-w-5xl px-6">
+          {/* Header */}
+          <div className="mb-12">
+            <img 
+              src="/logo.jpg" 
+              alt="David Salon Logo" 
+              className="mx-auto mb-6 max-w-[200px] sm:max-w-[250px]"
+            />
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-gray-800 mb-3">
+              Welcome!
+            </h1>
+            <p className="text-xl sm:text-2xl text-gray-600">
+              How would you like to find your perfect hairstyle?
+            </p>
+          </div>
+          
+          {/* Mode Selection Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8 max-w-4xl mx-auto">
+            {/* AI Recommendation Mode */}
             <button
-              ref={scissorsButtonRef}
-              onClick={handleStart}
-              className={`bg-[#160B53] hover:bg-[#12094A] text-white p-6 sm:p-8 md:p-10 lg:p-12 xl:p-14 2xl:p-16 kiosk:p-24 rounded-full shadow-lg kiosk:shadow-[0_20px_60px_rgba(0,0,0,0.3)] border-0 cursor-pointer ${
-                scissorsFlying ? 'scissors-fly-right' : 'hover:scale-110 transition-all duration-300'
-              }`}
-              disabled={scissorsFlying}
-              style={scissorsFlying ? {
-                position: 'fixed',
-                left: scissorsPosition.left + 'px',
-                top: scissorsPosition.top + 'px',
-                zIndex: 9999
-              } : {}}
+              onClick={() => handleModeSelect('ai')}
+              className="group bg-white rounded-3xl p-8 sm:p-10 shadow-xl hover:shadow-2xl border-4 border-transparent hover:border-purple-400 transition-all duration-300 hover:scale-105 text-left"
             >
-              <Scissors 
-                className="h-12 w-12 sm:h-16 sm:w-16 md:h-20 md:w-20 lg:h-24 lg:w-24 xl:h-28 xl:w-28 2xl:h-32 2xl:w-32 kiosk:h-48 kiosk:w-48" 
-                style={{
-                  transform: scissorsFlying ? 'rotate(360deg)' : 'none',
-                  transition: scissorsFlying ? 'transform 1s ease-in-out' : 'none'
-                }}
-              />
+              <div className="bg-gradient-to-br from-purple-500 to-pink-500 w-20 h-20 sm:w-24 sm:h-24 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                <Sparkles className="h-10 w-10 sm:h-12 sm:w-12 text-white" />
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-3">
+                AI Recommendation
+              </h2>
+              <p className="text-lg text-gray-600 mb-4">
+                Let our AI analyze your features and recommend the perfect hairstyles for you
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm font-medium">Personalized</span>
+                <span className="px-3 py-1 bg-pink-100 text-pink-700 rounded-full text-sm font-medium">Smart Analysis</span>
+              </div>
+            </button>
+            
+            {/* AR Try-On Mode */}
+            <button
+              onClick={() => handleModeSelect('ar')}
+              className="group bg-white rounded-3xl p-8 sm:p-10 shadow-xl hover:shadow-2xl border-4 border-transparent hover:border-blue-400 transition-all duration-300 hover:scale-105 text-left"
+            >
+              <div className="bg-gradient-to-br from-blue-500 to-cyan-500 w-20 h-20 sm:w-24 sm:h-24 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                <Camera className="h-10 w-10 sm:h-12 sm:w-12 text-white" />
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-3">
+                AR Try-On
+              </h2>
+              <p className="text-lg text-gray-600 mb-4">
+                Try different hairstyles on yourself in real-time using augmented reality
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">Real-time</span>
+                <span className="px-3 py-1 bg-cyan-100 text-cyan-700 rounded-full text-sm font-medium">Interactive</span>
+              </div>
             </button>
           </div>
         </div>
@@ -2956,71 +2830,10 @@ export default function ARHairTryOn() {
     );
   }
 
-  // Apply accessibility filters based on settings
-  const getAccessibilityStyles = () => {
-    const styles = {};
-    let filters = [];
-    
-    // Color blind mode filters using CSS matrix
-    if (accessibilitySettings.colorBlindMode) {
-      switch(accessibilitySettings.colorBlindMode) {
-        case 'protanopia':
-          filters.push('url(#protanopia-filter)');
-          break;
-        case 'deuteranopia':
-          filters.push('url(#deuteranopia-filter)');
-          break;
-        case 'tritanopia':
-          filters.push('url(#tritanopia-filter)');
-          break;
-      }
-    }
-    
-    // High contrast mode
-    if (accessibilitySettings.highContrast) {
-      filters.push('contrast(1.4)', 'brightness(1.1)');
-    }
-    
-    if (filters.length > 0) {
-      styles.filter = filters.join(' ');
-    }
-    
-    return styles;
-  };
-
-  // Font size multiplier
-  const getFontSizeMultiplier = () => {
-    switch(accessibilitySettings.fontSize) {
-      case 'small': return 0.875;
-      case 'large': return 1.25;
-      case 'xlarge': return 1.5;
-      default: return 1;
-    }
-  };
-
   return (
     <div 
       className="h-screen w-screen bg-gradient-to-br from-purple-50 via-white to-pink-50 overflow-hidden flex flex-col min-h-screen desktop:max-h-[100vh] desktop:h-[100vh] kiosk:h-[3180px] kiosk:max-h-[3180px]"
-      style={{
-        ...getAccessibilityStyles(),
-        fontSize: `${getFontSizeMultiplier()}rem`,
-        ...(accessibilitySettings.reducedMotion ? { animation: 'none' } : {})
-      }}
     >
-      {/* SVG Filters for Color Blind Modes */}
-      <svg style={{ position: 'absolute', width: 0, height: 0 }}>
-        <defs>
-          <filter id="protanopia-filter">
-            <feColorMatrix values="0.567, 0.433, 0, 0, 0 0.558, 0.442, 0, 0, 0 0, 0.242, 0.758, 0, 0 0, 0, 0, 1, 0"/>
-          </filter>
-          <filter id="deuteranopia-filter">
-            <feColorMatrix values="0.625, 0.375, 0, 0, 0 0.7, 0.3, 0, 0, 0 0, 0.3, 0.7, 0, 0 0, 0, 0, 1, 0"/>
-          </filter>
-          <filter id="tritanopia-filter">
-            <feColorMatrix values="0.95, 0.05, 0, 0, 0 0, 0.433, 0.567, 0, 0 0, 0.475, 0.525, 0, 0 0, 0, 0, 1, 0"/>
-          </filter>
-        </defs>
-      </svg>
       {/* Header - Minimalist with centered logo */}
       <div className="bg-white h-14 sm:h-16 md:h-20 lg:h-24 xl:h-28 desktop:h-16 kiosk:h-32 flex items-center justify-center relative px-4 sm:px-8 lg:px-16 xl:px-24 desktop:px-8 flex-shrink-0 border-b-2 border-gray-200 desktop:border-b">
         {/* Centered Logo */}
@@ -3031,17 +2844,6 @@ export default function ARHairTryOn() {
             className="h-10 sm:h-12 md:h-16 lg:h-20 kiosk:h-24 object-contain"
           />
         </div>
-        
-        {/* Accessibility Button - Top Left */}
-        <Button
-          variant="outline"
-          onClick={() => setAccessibilitySettings(prev => ({ ...prev, showAccessibilityPanel: !prev.showAccessibilityPanel }))}
-          className="absolute left-2 sm:left-4 md:left-8 lg:left-16 xl:left-24 top-1/2 -translate-y-1/2 border-2 border-gray-400 text-gray-700 hover:bg-gray-100 hover:border-gray-600 text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl kiosk:text-2xl px-2 py-1 sm:px-3 sm:py-2 md:px-4 md:py-2 lg:px-6 lg:py-3 xl:px-8 xl:py-4 kiosk:px-12 kiosk:py-6 h-auto rounded-lg sm:rounded-xl shadow-md hover:shadow-lg transition-all"
-          title="Accessibility Settings"
-        >
-          <Accessibility className="h-3 w-3 sm:h-4 sm:w-4 md:h-5 md:w-5 lg:h-6 lg:w-6 xl:h-7 xl:w-7 kiosk:h-8 kiosk:w-8 mr-1 sm:mr-2 lg:mr-3" />
-          Accessibility
-        </Button>
         
         {/* Reset Button - Top Right */}
         <Button
@@ -3054,664 +2856,469 @@ export default function ARHairTryOn() {
         </Button>
       </div>
 
-      {/* Progress Steps - Kiosk Large */}
-      <div className="w-full px-4 sm:px-8 lg:px-16 xl:px-24 py-2 sm:py-3 lg:py-4 xl:py-5 kiosk:py-3 bg-white border-b-2 sm:border-b-4 border-purple-200">
-        <div className="flex items-center justify-center gap-2 sm:gap-4 md:gap-6 lg:gap-8 overflow-x-auto">
-          {/* Progress Steps */}
-          {currentStep === 1 && (
-            <div className="flex items-center gap-2 sm:gap-3 lg:gap-4">
-              <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 lg:w-16 lg:h-16 kiosk:w-20 kiosk:h-20 rounded-full flex items-center justify-center font-bold text-xs sm:text-sm md:text-base lg:text-xl xl:text-2xl kiosk:text-3xl bg-[#160B53] text-white">
-                <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 lg:h-8 lg:w-8 kiosk:h-10 kiosk:w-10" />
-              </div>
-              <span className="text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl 2xl:text-2xl kiosk:text-3xl text-gray-600">Preferences</span>
-            </div>
-          )}
-          
-          {/* Show main flow steps when not in preferences */}
-          {currentStep !== 1 && (() => {
-            const steps = [
-              { num: 1, label: "Preferences", display: "1" },
-              { num: 7, label: "Camera", display: "7" },
-              { num: 10, label: "Face & Skin", display: "FS" },
-              { num: 8, label: "Summary", display: "8" },
-              { num: 9, label: "Results", display: "9" }
-            ];
-            
-            // Filter steps to show: always show first, current, and next
-            const visibleSteps = steps.filter((step, idx) => {
-              if (idx === 0) return true; // Always show first
-              if (currentStep >= step.num) return true; // Show completed and current
-              if (idx > 0 && currentStep >= steps[idx - 1].num) return true; // Show next after current
-              return false;
-            });
-            
-            return visibleSteps.map((step, idx) => (
-              <div key={step.num} className="flex items-center">
-                <div
-                  className={`w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 lg:w-16 lg:h-16 xl:w-20 xl:h-20 kiosk:w-24 kiosk:h-24 rounded-full flex items-center justify-center font-bold text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl 2xl:text-2xl kiosk:text-4xl transition-all animate-scale-in ${
-                    currentStep >= step.num || (step.num === 1 && currentStep > 0)
-                      ? "bg-[#160B53] text-white scale-110"
-                      : "bg-gray-200 text-gray-500"
-                  }`}
-                  style={{ animationDelay: `${idx * 0.1}s` }}
-                >
-                  {currentStep > step.num ? (
-                    <CheckCircle className="h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7 lg:h-8 lg:w-8 xl:h-10 xl:w-10 kiosk:h-12 kiosk:w-12" />
-                  ) : (
-                    <span>{step.display}</span>
-                  )}
-                </div>
-                {idx < visibleSteps.length - 1 && (
-                  <div
-                    className={`w-6 h-1 sm:w-8 sm:h-1 md:w-12 md:h-2 lg:w-16 lg:h-2 xl:w-24 xl:h-2 kiosk:w-32 kiosk:h-3 mx-2 sm:mx-3 lg:mx-4 transition-all rounded-full animate-progress ${
-                      currentStep > step.num ? "bg-[#160B53]" : "bg-gray-200"
-                    }`}
-                  />
-                )}
-              </div>
-            ));
-          })()}
-        </div>
-        <div className="text-center mt-2 sm:mt-3 lg:mt-4 kiosk:mt-3">
-          <p className="text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl 2xl:text-2xl kiosk:text-3xl text-gray-600 font-semibold">
-            {currentStep === 2 && "AR Try-On"}
-            {currentStep === 7 && "Face & Skin Analysis"}
-            {currentStep === 10 && "Select Face Shape & Skin Color"}
-            {currentStep === 8 && "Review Summary"}
-            {currentStep === 9 && "Your Recommendations"}
-            {currentStep === 3 && "Smart Recommendations"}
-          </p>
-        </div>
-      </div>
-
-      {/* Accessibility Settings Panel */}
-      {accessibilitySettings.showAccessibilityPanel && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 sm:p-6 lg:p-8">
-          <div className="bg-white rounded-2xl sm:rounded-3xl p-6 sm:p-8 lg:p-12 max-w-4xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border-4 border-purple-200">
-            <div className="flex items-center justify-between mb-6 lg:mb-8 pb-4 border-b-2 border-gray-200">
-              <div className="flex items-center gap-4">
-                <Accessibility className="h-8 w-8 sm:h-10 sm:w-10 text-purple-600" />
-                <h2 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-800">Accessibility Settings</h2>
-              </div>
-              <button
-                onClick={() => setAccessibilitySettings(prev => ({ ...prev, showAccessibilityPanel: false }))}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-              >
-                <X className="h-6 w-6 sm:h-8 sm:w-8" />
-              </button>
-            </div>
-
-            <div className="space-y-6 lg:space-y-8">
-              {/* Color Blind Mode */}
-              <div className="bg-gray-50 rounded-xl p-6 border-2 border-gray-200">
-                <div className="flex items-center gap-3 mb-4">
-                  <Eye className="h-6 w-6 text-purple-600" />
-                  <h3 className="text-xl sm:text-2xl font-bold text-gray-800">Color Blind Mode</h3>
-                </div>
-                <p className="text-sm sm:text-base text-gray-600 mb-4">Adjust colors for better visibility if you have color vision deficiency.</p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {[
-                    { value: false, label: "None", icon: "👁️" },
-                    { value: "protanopia", label: "Protanopia", icon: "🔴", desc: "Red-blind" },
-                    { value: "deuteranopia", label: "Deuteranopia", icon: "🟢", desc: "Green-blind" },
-                    { value: "tritanopia", label: "Tritanopia", icon: "🔵", desc: "Blue-blind" }
-                  ].map((option) => (
-                    <button
-                      key={option.value || 'none'}
-                      onClick={() => setAccessibilitySettings(prev => ({ ...prev, colorBlindMode: option.value }))}
-                      className={`p-4 rounded-xl border-2 transition-all ${
-                        accessibilitySettings.colorBlindMode === option.value
-                          ? "border-purple-600 bg-purple-100 shadow-lg scale-105"
-                          : "border-gray-300 hover:border-purple-300 hover:bg-gray-100"
-                      }`}
-                    >
-                      <div className="text-2xl mb-2">{option.icon}</div>
-                      <div className="font-semibold text-sm sm:text-base">{option.label}</div>
-                      {option.desc && <div className="text-xs text-gray-500 mt-1">{option.desc}</div>}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* High Contrast Mode */}
-              <div className="bg-gray-50 rounded-xl p-6 border-2 border-gray-200">
-                <div className="flex items-center gap-3 mb-4">
-                  <Contrast className="h-6 w-6 text-purple-600" />
-                  <h3 className="text-xl sm:text-2xl font-bold text-gray-800">High Contrast Mode</h3>
-                </div>
-                <p className="text-sm sm:text-base text-gray-600 mb-4">Increase contrast for better visibility.</p>
-                <button
-                  onClick={() => setAccessibilitySettings(prev => ({ ...prev, highContrast: !prev.highContrast }))}
-                  className={`w-full p-4 rounded-xl border-2 transition-all flex items-center justify-between ${
-                    accessibilitySettings.highContrast
-                      ? "border-purple-600 bg-purple-100"
-                      : "border-gray-300 hover:border-purple-300"
-                  }`}
-                >
-                  <span className="font-semibold text-base sm:text-lg">Enable High Contrast</span>
-                  <div className={`w-12 h-6 rounded-full transition-colors ${
-                    accessibilitySettings.highContrast ? "bg-purple-600" : "bg-gray-300"
-                  }`}>
-                    <div className={`w-5 h-5 bg-white rounded-full transition-transform mt-0.5 ml-0.5 ${
-                      accessibilitySettings.highContrast ? "translate-x-6" : ""
-                    }`} />
-                  </div>
-                </button>
-              </div>
-
-              {/* Font Size */}
-              <div className="bg-gray-50 rounded-xl p-6 border-2 border-gray-200">
-                <div className="flex items-center gap-3 mb-4">
-                  <TypeIcon className="h-6 w-6 text-purple-600" />
-                  <h3 className="text-xl sm:text-2xl font-bold text-gray-800">Font Size</h3>
-                </div>
-                <p className="text-sm sm:text-base text-gray-600 mb-4">Adjust text size for better readability.</p>
-                <div className="grid grid-cols-4 gap-3">
-                  {['small', 'normal', 'large', 'xlarge'].map((size) => (
-                    <button
-                      key={size}
-                      onClick={() => setAccessibilitySettings(prev => ({ ...prev, fontSize: size }))}
-                      className={`p-4 rounded-xl border-2 transition-all ${
-                        accessibilitySettings.fontSize === size
-                          ? "border-purple-600 bg-purple-100 shadow-lg"
-                          : "border-gray-300 hover:border-purple-300"
-                      }`}
-                    >
-                      <div className="text-2xl mb-2">Aa</div>
-                      <div className="font-semibold text-xs sm:text-sm capitalize">{size}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Reduced Motion */}
-              <div className="bg-gray-50 rounded-xl p-6 border-2 border-gray-200">
-                <div className="flex items-center gap-3 mb-4">
-                  <Settings className="h-6 w-6 text-purple-600" />
-                  <h3 className="text-xl sm:text-2xl font-bold text-gray-800">Reduced Motion</h3>
-                </div>
-                <p className="text-sm sm:text-base text-gray-600 mb-4">Disable animations for users sensitive to motion.</p>
-                <button
-                  onClick={() => setAccessibilitySettings(prev => ({ ...prev, reducedMotion: !prev.reducedMotion }))}
-                  className={`w-full p-4 rounded-xl border-2 transition-all flex items-center justify-between ${
-                    accessibilitySettings.reducedMotion
-                      ? "border-purple-600 bg-purple-100"
-                      : "border-gray-300 hover:border-purple-300"
-                  }`}
-                >
-                  <span className="font-semibold text-base sm:text-lg">Reduce Motion</span>
-                  <div className={`w-12 h-6 rounded-full transition-colors ${
-                    accessibilitySettings.reducedMotion ? "bg-purple-600" : "bg-gray-300"
-                  }`}>
-                    <div className={`w-5 h-5 bg-white rounded-full transition-transform mt-0.5 ml-0.5 ${
-                      accessibilitySettings.reducedMotion ? "translate-x-6" : ""
-                    }`} />
-                  </div>
-                </button>
-              </div>
-
-              {/* Keyboard Navigation Info */}
-              <div className="bg-blue-50 rounded-xl p-4 border-2 border-blue-200">
-                <h4 className="font-semibold text-base sm:text-lg mb-2">⌨️ Keyboard Navigation</h4>
-                <ul className="text-sm space-y-1 text-gray-700">
-                  <li>• Use <kbd className="px-2 py-1 bg-gray-200 rounded">Tab</kbd> to navigate</li>
-                  <li>• Use <kbd className="px-2 py-1 bg-gray-200 rounded">Enter</kbd> or <kbd className="px-2 py-1 bg-gray-200 rounded">Space</kbd> to activate</li>
-                  <li>• Use <kbd className="px-2 py-1 bg-gray-200 rounded">Escape</kbd> to close modals</li>
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Step 1: Single Page - All Preferences */}
+      {/* Step 1: Wizard-Style Preferences - McDonald's Kiosk Style */}
       {currentStep === 1 && (
-        <div className="flex-1 overflow-hidden bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 animate-fade-in min-h-0 relative desktop:max-h-[calc(100vh-80px)] desktop:h-[calc(100vh-80px)] kiosk:h-[calc(3180px-200px)] kiosk:max-h-[calc(3180px-200px)] preferences-page">
-
-          <div className="w-full h-full max-w-[2000px] mx-auto px-6 sm:px-8 lg:px-10 xl:px-12 2xl:px-16 desktop:px-12 desktop:py-6 kiosk:px-12 py-4 sm:py-5 lg:py-6 xl:py-8 kiosk:py-8 flex flex-col">
-            <Card className="bg-white/95 backdrop-blur-sm border-[3px] sm:border-4 lg:border-[5px] border-purple-200 rounded-xl sm:rounded-2xl lg:rounded-3xl shadow-2xl sm:shadow-3xl flex-1 flex flex-col min-h-0 desktop:border-4 desktop:rounded-xl desktop:shadow-2xl">
-              <CardContent className="p-5 sm:p-6 lg:p-8 xl:p-10 2xl:p-12 desktop:p-8 kiosk:p-10 flex-1 flex flex-col min-h-0 overflow-hidden">
-                {/* Main Grid Layout */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 sm:gap-6 lg:gap-8 xl:gap-10 desktop:gap-8 kiosk:gap-10 flex-1 min-h-0 overflow-hidden desktop-step-container">
-                  
-                  {/* Left Column */}
-                  <div className="space-y-6 sm:space-y-7 lg:space-y-8 xl:space-y-10 desktop:space-y-8 kiosk:space-y-12 overflow-y-auto min-h-0 flex flex-col">
-                    
-                    {/* Gender Section */}
-                    <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-xl sm:rounded-2xl p-4 sm:p-5 lg:p-6 xl:p-8 desktop:p-6 kiosk:p-8 border-[3px] desktop:border-4 border-purple-100 shadow-lg hover:shadow-xl transition-shadow">
-                      <div className="flex items-center gap-3 sm:gap-3 lg:gap-4 mb-3 sm:mb-4 lg:mb-5 desktop:mb-4 kiosk:mb-6">
-                        <div className="p-2 sm:p-2.5 lg:p-3 desktop:p-3 bg-[#160B53] rounded-lg">
-                          <User className="h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7 lg:h-8 lg:w-8 xl:h-9 xl:w-9 desktop:h-8 desktop:w-8 kiosk:h-12 kiosk:w-12 text-white" />
-                        </div>
-                        <span className="text-base sm:text-lg md:text-xl lg:text-2xl xl:text-3xl desktop:text-2xl kiosk:text-5xl font-bold text-gray-800">Gender</span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:gap-4 desktop:gap-6 kiosk:gap-5">
-                        {[
-                          { value: "male", symbol: "♂", label: "Male", color: "#3B82F6" },
-                          { value: "female", symbol: "♀", label: "Female", color: "#EC4899" }
-                        ].map(({ value, symbol, label, color }) => (
-                          <button
-                            key={value}
-                            type="button"
-                            onClick={() => handlePreferenceChange("gender", value)}
-                            className={`p-4 sm:p-5 md:p-6 lg:p-7 xl:p-8 desktop:p-8 kiosk:p-12 rounded-xl sm:rounded-2xl desktop:rounded-xl border-[3px] desktop:border-4 transition-all duration-300 transform hover:scale-105 active:scale-95 flex flex-col items-center justify-center gap-2 sm:gap-2.5 desktop:gap-3 relative overflow-hidden ${
-                              preferences.gender === value
-                                ? "border-[#160B53] bg-white shadow-xl scale-105"
-                                : "border-gray-300 bg-white text-gray-700 hover:border-purple-300 hover:bg-purple-50"
-                            }`}
-                            title={label}
-                          >
-                            <span 
-                              className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl kiosk:text-9xl font-bold leading-none"
-                              style={{ 
-                                fontFamily: 'Arial, sans-serif',
-                                color: preferences.gender === value ? "#160B53" : color
-                              }}
-                            >
-                              {symbol}
+        <div className="flex-1 overflow-hidden bg-white animate-fade-in min-h-0 relative">
+          <div className="w-full h-full flex">
+            
+            {/* Left Sidebar - Thumbnail Navigation (McDonald's Style) */}
+            <div className="w-20 sm:w-24 md:w-28 bg-gray-50 border-r-2 border-gray-200 py-2 flex flex-col items-center gap-1 overflow-y-auto">
+              {[
+                { id: 1, icon: "👤", label: "Gender", check: preferences.gender },
+                { id: 2, icon: "✂️", label: "Length", check: preferences.hairLength },
+                { id: 3, icon: "〰️", label: "Type", check: preferences.hairType },
+                { id: 4, icon: "🎨", label: "Color", check: preferences.hairColor },
+                { id: 5, icon: "✨", label: "Style", check: preferences.stylePreferences?.length > 0 },
+                { id: 6, icon: "📝", label: "Notes", check: customDescription?.length > 0 }
+              ].map((step) => (
+                <button
+                  key={step.id}
+                  onClick={() => setPreferenceStep(step.id)}
+                  className={`w-16 sm:w-20 md:w-24 aspect-square rounded-xl border-3 transition-all duration-200 flex flex-col items-center justify-center gap-0.5 relative ${
+                    preferenceStep === step.id
+                      ? 'border-[#160B53] bg-white shadow-lg ring-2 ring-[#160B53]/20'
+                      : step.check
+                        ? 'border-green-400 bg-green-50 hover:bg-green-100'
+                        : 'border-gray-200 bg-white hover:bg-gray-100 hover:border-gray-300'
+                  }`}
+                >
+                  <span className="text-2xl sm:text-3xl md:text-4xl">{step.icon}</span>
+                  <span className={`text-[10px] sm:text-xs font-semibold ${
+                    preferenceStep === step.id ? 'text-[#160B53]' : step.check ? 'text-green-600' : 'text-gray-500'
+                  }`}>{step.label}</span>
+                  {step.check && preferenceStep !== step.id && (
+                    <div className="absolute -top-1 -right-1 w-5 h-5 bg-green-500 rounded-full flex items-center justify-center">
+                      <CheckCircle className="w-3 h-3 text-white" />
+                    </div>
+                  )}
+                </button>
+              ))}
+              
+              {/* Continue Button at bottom of sidebar */}
+              <div className="mt-auto pt-2 border-t border-gray-200 w-full px-1">
+                <button
+                  onClick={() => {
+                    stopCamera();
+                    setCurrentStep(7);
+                  }}
+                  disabled={!preferences.gender}
+                  className={`w-full aspect-square rounded-xl border-3 flex flex-col items-center justify-center gap-0.5 transition-all ${
+                    preferences.gender
+                      ? 'border-[#160B53] bg-[#160B53] text-white hover:bg-[#12094A]'
+                      : 'border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed'
+                  }`}
+                >
+                  <Camera className="w-6 h-6 sm:w-8 sm:h-8" />
+                  <span className="text-[10px] sm:text-xs font-semibold">Camera</span>
+                </button>
+              </div>
+            </div>
+            
+            {/* Main Content Area */}
+            <div className="flex-1 flex flex-col overflow-hidden">
+              {/* Header */}
+              <div className="bg-gradient-to-r from-[#160B53] to-purple-700 text-white px-6 sm:px-8 py-4 sm:py-5">
+                <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold">
+                  {preferenceStep === 1 && "Select Your Gender"}
+                  {preferenceStep === 2 && "Preferred Hair Length"}
+                  {preferenceStep === 3 && "Your Hair Type"}
+                  {preferenceStep === 4 && "Hair Color Preference"}
+                  {preferenceStep === 5 && "Style Preferences"}
+                  {preferenceStep === 6 && "Additional Notes"}
+                </h1>
+                <p className="text-white/80 mt-1 text-sm sm:text-base md:text-lg">
+                  {preferenceStep === 1 && "This helps us recommend the best hairstyles for you"}
+                  {preferenceStep === 2 && "What length are you looking for?"}
+                  {preferenceStep === 3 && "What's your natural hair texture?"}
+                  {preferenceStep === 4 && "What color do you prefer?"}
+                  {preferenceStep === 5 && "Select styles that match your personality (multiple allowed)"}
+                  {preferenceStep === 6 && "Any specific requests or preferences? (Optional)"}
+                </p>
+              </div>
+              
+              {/* Content Grid */}
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 flex items-center justify-center">
+                
+                {/* Step 1: Gender */}
+                {preferenceStep === 1 && (
+                  <div className="grid grid-cols-2 gap-6 sm:gap-8 w-full max-w-3xl animate-fade-in">
+                    {[
+                      { value: "male", symbol: "♂", label: "Male", color: "#3B82F6", bg: "from-blue-50 to-blue-100" },
+                      { value: "female", symbol: "♀", label: "Female", color: "#EC4899", bg: "from-pink-50 to-pink-100" }
+                    ].map(({ value, symbol, label, color, bg }) => (
+                      <button
+                        key={value}
+                        onClick={() => {
+                          handlePreferenceChange("gender", value);
+                          setTimeout(() => setPreferenceStep(2), 300);
+                        }}
+                        className={`p-6 sm:p-8 aspect-[3/4] rounded-2xl border-4 transition-all duration-300 transform hover:scale-105 active:scale-95 flex flex-col items-center justify-center gap-4 bg-gradient-to-br ${bg} ${
+                          preferences.gender === value
+                            ? "border-[#160B53] shadow-2xl ring-4 ring-[#160B53]/20"
+                            : "border-gray-200 hover:border-purple-300"
+                        }`}
+                      >
+                        <span className="text-7xl sm:text-8xl md:text-9xl font-bold" style={{ color: preferences.gender === value ? "#160B53" : color }}>
+                          {symbol}
+                        </span>
+                        <span className={`text-xl sm:text-2xl md:text-3xl font-bold ${preferences.gender === value ? "text-[#160B53]" : "text-gray-700"}`}>
+                          {label}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                
+                {/* Step 2: Hair Length */}
+                {preferenceStep === 2 && (
+                  <div className="animate-fade-in w-full max-w-4xl flex flex-col">
+                    <div className="grid grid-cols-3 gap-3 sm:gap-5">
+                      {[
+                        { 
+                          length: "Short", 
+                          maleImage: "https://cdn.shopify.com/s/files/1/0029/0868/4397/files/Crew-Cut-Fade.webp?v=1755505078",
+                          femaleImage: "https://entertainment.inquirer.net/files/2024/09/Michelle-Dee-Voice-for-Change-09162024.png"
+                        },
+                        { 
+                          length: "Medium", 
+                          maleImage: "https://cdn.shopify.com/s/files/1/0029/0868/4397/files/middle-part-mullet-haircut-men.webp?v=1758288627",
+                          femaleImage: "https://content.latest-hairstyles.com/wp-content/uploads/simple-shoulder-length-hairstyles-ideas-500x375.jpg"
+                        },
+                        { 
+                          length: "Long", 
+                          maleImage: "https://cdn.shopify.com/s/files/1/0029/0868/4397/files/long-korean-haircut-men.webp?v=1761209100",
+                          femaleImage: "https://assets-metrostyle.abs-cbn.com/prod/metrostyle/attachments/44e931b3-7ffd-44de-b6c8-3ddb53fdfb53_screen%20shot%202024-01-02%20at%2011.44.15%20am.png"
+                        }
+                      ].map(({ length, maleImage, femaleImage }) => (
+                        <button
+                          key={length}
+                          onClick={() => {
+                            handlePreferenceChange("hairLength", length.toLowerCase());
+                            setTimeout(() => setPreferenceStep(3), 300);
+                          }}
+                          className={`relative overflow-hidden rounded-2xl border-4 transition-all duration-300 transform hover:scale-105 active:scale-95 aspect-[3/4] ${
+                            preferences.hairLength === length.toLowerCase()
+                              ? "border-[#160B53] shadow-xl ring-4 ring-[#160B53]/30"
+                              : "border-transparent hover:border-purple-300"
+                          }`}
+                        >
+                          <img 
+                            src={preferences.gender === "male" ? maleImage : femaleImage} 
+                            alt={length}
+                            className="w-full h-full object-cover"
+                          />
+                          {/* Gradient overlay */}
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+                          {/* Label */}
+                          <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4">
+                            <span className="text-white text-xl sm:text-2xl lg:text-3xl font-bold drop-shadow-lg">
+                              {length}
                             </span>
-                            <span className={`text-sm sm:text-base md:text-lg lg:text-xl xl:text-2xl desktop:text-base kiosk:text-4xl font-semibold relative z-10 ${
-                              preferences.gender === value ? "text-[#160B53]" : "text-gray-700"
-                            }`}>{label}</span>
-                            {preferences.gender === value && (
-                              <div className="absolute top-2 right-2">
-                                <CheckCircle className="h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7 lg:h-8 lg:w-8 text-[#160B53] animate-bounce" />
-                              </div>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Hair Length Section */}
-                    <div className="bg-gradient-to-br from-pink-50 to-purple-50 rounded-xl sm:rounded-2xl p-4 sm:p-5 lg:p-6 xl:p-8 desktop:p-6 kiosk:p-8 border-[3px] desktop:border-4 border-pink-100 shadow-lg hover:shadow-xl transition-shadow">
-                      <div className="flex items-center gap-3 sm:gap-3 lg:gap-4 mb-3 sm:mb-4 lg:mb-5 desktop:mb-4 kiosk:mb-6">
-                        <div className="p-2 sm:p-2.5 lg:p-3 desktop:p-3 bg-[#160B53] rounded-lg">
-                          <ScissorsIcon className="h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7 lg:h-8 lg:w-8 xl:h-9 xl:w-9 desktop:h-8 desktop:w-8 kiosk:h-12 kiosk:w-12 text-white" />
-                        </div>
-                        <span className="text-base sm:text-lg md:text-xl lg:text-2xl xl:text-3xl desktop:text-2xl kiosk:text-5xl font-bold text-gray-800">Hair Length</span>
-                      </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 lg:gap-4 desktop:gap-5 kiosk:gap-5">
-                        {["Short", "Medium", "Long", "Choose Specific Length"].map((length) => (
-                          <button
-                            key={length}
-                            type="button"
-                            onClick={() => {
-                              if (length === "Choose Specific Length") {
-                                setShowHairLengthModal(true);
-                              } else {
-                                handlePreferenceChange("hairLength", length.toLowerCase());
-                              }
-                            }}
-                            className={`p-3 sm:p-4 md:p-5 lg:p-6 xl:p-7 desktop:p-6 kiosk:p-10 rounded-xl sm:rounded-2xl desktop:rounded-xl border-[3px] desktop:border-4 transition-all duration-300 transform hover:scale-105 active:scale-95 flex flex-col items-center justify-center gap-2 sm:gap-2.5 desktop:gap-3 ${
-                              preferences.hairLength === length.toLowerCase() || (length === "Choose Specific Length" && preferences.hairLength)
-                                ? "border-[#160B53] bg-white shadow-xl scale-105"
-                                : "border-gray-300 bg-white text-gray-700 hover:border-purple-300 hover:bg-purple-50"
-                            }`}
-                          >
-                            {length === "Choose Specific Length" ? (
-                              <>
-                                <Target className={`h-6 w-6 sm:h-7 sm:w-7 md:h-8 md:w-8 lg:h-9 lg:w-9 xl:h-10 xl:w-10 kiosk:h-16 kiosk:w-16 ${
-                                  preferences.hairLength ? "text-[#160B53]" : "text-[#160B53]"
-                                }`} />
-                                <span className={`text-sm sm:text-base md:text-lg lg:text-lg xl:text-xl kiosk:text-2xl font-semibold text-center ${
-                                  preferences.hairLength ? "text-[#160B53]" : "text-gray-700"
-                                }`}>{length}</span>
-                              </>
-                            ) : (
-                              <div className="flex flex-col items-center gap-2 sm:gap-2.5">
-                                {/* Visual representation of hair length */}
-                                <svg 
-                                  width="40" 
-                                  height="50" 
-                                  viewBox="0 0 100 120" 
-                                  className={`sm:w-[70px] sm:h-[85px] md:w-[80px] md:h-[95px] lg:w-[90px] lg:h-[105px] xl:w-[100px] xl:h-[115px] kiosk:w-[140px] kiosk:h-[170px] ${
-                                    preferences.hairLength === length.toLowerCase() ? "opacity-100" : "opacity-60"
-                                  }`}
-                                >
-                                  {/* Head circle - center at (50, 50), radius 20 (top of circle at y=30) */}
-                                  <circle 
-                                    cx="50" 
-                                    cy="50" 
-                                    r="20" 
-                                    fill="none" 
-                                    stroke={preferences.hairLength === length.toLowerCase() ? "#160B53" : "#9CA3AF"} 
-                                    strokeWidth="2"
-                                  />
-                                  
-                                  {/* Hair based on length - starting from the top of the circle (y=30) */}
-                                  {length === "Short" && (
-                                    <>
-                                      {/* Short hair - starts from top of circle (y=30), extends slightly above */}
-                                      <path 
-                                        d="M 30 30 Q 30 25 35 22 Q 40 20 50 20 Q 60 20 65 22 Q 70 25 70 30 Q 70 35 65 38 Q 60 40 50 40 Q 40 40 35 38 Q 30 35 30 30" 
-                                        fill={preferences.hairLength === length.toLowerCase() ? "#160B53" : "#D1D5DB"} 
-                                        stroke={preferences.hairLength === length.toLowerCase() ? "#160B53" : "#9CA3AF"} 
-                                        strokeWidth="1.5"
-                                      />
-                                      {/* Hair texture lines */}
-                                      <path d="M 35 28 Q 40 26 45 28" stroke={preferences.hairLength === length.toLowerCase() ? "#160B53" : "#9CA3AF"} strokeWidth="1" fill="none" />
-                                      <path d="M 50 22 Q 55 20 60 22" stroke={preferences.hairLength === length.toLowerCase() ? "#160B53" : "#9CA3AF"} strokeWidth="1" fill="none" />
-                                      <path d="M 55 28 Q 60 26 65 28" stroke={preferences.hairLength === length.toLowerCase() ? "#160B53" : "#9CA3AF"} strokeWidth="1" fill="none" />
-                                    </>
-                                  )}
-                                  
-                                  {length === "Medium" && (
-                                    <>
-                                      {/* Medium hair - starts from top of circle (y=30), extends to shoulder level */}
-                                      <path 
-                                        d="M 30 30 Q 30 25 35 22 Q 40 20 50 20 Q 60 20 65 22 Q 70 25 70 30 Q 70 40 68 50 Q 65 60 50 70 Q 35 60 32 50 Q 30 40 30 30" 
-                                        fill={preferences.hairLength === length.toLowerCase() ? "#160B53" : "#D1D5DB"} 
-                                        stroke={preferences.hairLength === length.toLowerCase() ? "#160B53" : "#9CA3AF"} 
-                                        strokeWidth="1.5"
-                                      />
-                                      {/* Hair texture lines */}
-                                      <path d="M 35 28 Q 40 26 45 28" stroke={preferences.hairLength === length.toLowerCase() ? "#160B53" : "#9CA3AF"} strokeWidth="1" fill="none" />
-                                      <path d="M 50 22 Q 55 20 60 22" stroke={preferences.hairLength === length.toLowerCase() ? "#160B53" : "#9CA3AF"} strokeWidth="1" fill="none" />
-                                      <path d="M 55 28 Q 60 26 65 28" stroke={preferences.hairLength === length.toLowerCase() ? "#160B53" : "#9CA3AF"} strokeWidth="1" fill="none" />
-                                      <path d="M 38 45 Q 42 50 45 45" stroke={preferences.hairLength === length.toLowerCase() ? "#160B53" : "#9CA3AF"} strokeWidth="1" fill="none" />
-                                      <path d="M 55 45 Q 58 50 62 45" stroke={preferences.hairLength === length.toLowerCase() ? "#160B53" : "#9CA3AF"} strokeWidth="1" fill="none" />
-                                    </>
-                                  )}
-                                  
-                                  {length === "Long" && (
-                                    <>
-                                      {/* Long hair - starts from top of circle (y=30), extends well below shoulders */}
-                                      <path 
-                                        d="M 30 30 Q 30 25 35 22 Q 40 20 50 20 Q 60 20 65 22 Q 70 25 70 30 Q 70 40 68 50 Q 66 65 62 80 Q 58 95 50 100 Q 42 95 38 80 Q 34 65 32 50 Q 30 40 30 30" 
-                                        fill={preferences.hairLength === length.toLowerCase() ? "#160B53" : "#D1D5DB"} 
-                                        stroke={preferences.hairLength === length.toLowerCase() ? "#160B53" : "#9CA3AF"} 
-                                        strokeWidth="1.5"
-                                      />
-                                      {/* Hair texture lines */}
-                                      <path d="M 35 28 Q 40 26 45 28" stroke={preferences.hairLength === length.toLowerCase() ? "#160B53" : "#9CA3AF"} strokeWidth="1" fill="none" />
-                                      <path d="M 50 22 Q 55 20 60 22" stroke={preferences.hairLength === length.toLowerCase() ? "#160B53" : "#9CA3AF"} strokeWidth="1" fill="none" />
-                                      <path d="M 55 28 Q 60 26 65 28" stroke={preferences.hairLength === length.toLowerCase() ? "#160B53" : "#9CA3AF"} strokeWidth="1" fill="none" />
-                                      <path d="M 38 45 Q 42 55 45 45" stroke={preferences.hairLength === length.toLowerCase() ? "#160B53" : "#9CA3AF"} strokeWidth="1" fill="none" />
-                                      <path d="M 55 45 Q 58 55 62 45" stroke={preferences.hairLength === length.toLowerCase() ? "#160B53" : "#9CA3AF"} strokeWidth="1" fill="none" />
-                                      <path d="M 40 65 Q 44 75 47 65" stroke={preferences.hairLength === length.toLowerCase() ? "#160B53" : "#9CA3AF"} strokeWidth="1" fill="none" />
-                                      <path d="M 53 65 Q 56 75 60 65" stroke={preferences.hairLength === length.toLowerCase() ? "#160B53" : "#9CA3AF"} strokeWidth="1" fill="none" />
-                                      <path d="M 42 85 Q 46 95 48 85" stroke={preferences.hairLength === length.toLowerCase() ? "#160B53" : "#9CA3AF"} strokeWidth="1" fill="none" />
-                                      <path d="M 52 85 Q 54 95 58 85" stroke={preferences.hairLength === length.toLowerCase() ? "#160B53" : "#9CA3AF"} strokeWidth="1" fill="none" />
-                                    </>
-                                  )}
-                                  
-                                  {/* Shoulder line */}
-                                  <line 
-                                    x1="20" 
-                                    y1="70" 
-                                    x2="80" 
-                                    y2="70" 
-                                    stroke={preferences.hairLength === length.toLowerCase() ? "#160B53" : "#9CA3AF"} 
-                                    strokeWidth="2"
-                                  />
-                                </svg>
-                                <span className={`text-sm sm:text-base md:text-lg lg:text-lg xl:text-xl kiosk:text-3xl font-bold ${
-                                  preferences.hairLength === length.toLowerCase() ? "text-[#160B53]" : "text-gray-700"
-                                }`}>{length}</span>
-                              </div>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Hair Type Section */}
-                    <div className="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl sm:rounded-2xl p-4 sm:p-5 lg:p-6 xl:p-8 desktop:p-6 kiosk:p-8 border-[3px] desktop:border-4 border-blue-100 shadow-lg hover:shadow-xl transition-shadow">
-                      <div className="flex items-center gap-3 sm:gap-3 lg:gap-4 mb-3 sm:mb-4 lg:mb-5 desktop:mb-4 kiosk:mb-6">
-                        <div className="p-2 sm:p-2.5 lg:p-3 desktop:p-3 bg-[#160B53] rounded-lg">
-                          <SparklesIcon className="h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7 lg:h-8 lg:w-8 xl:h-9 xl:w-9 desktop:h-8 desktop:w-8 kiosk:h-12 kiosk:w-12 text-white" />
-                        </div>
-                        <span className="text-base sm:text-lg md:text-xl lg:text-2xl xl:text-3xl desktop:text-2xl kiosk:text-5xl font-bold text-gray-800">Hair Type</span>
-                      </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 lg:gap-4 desktop:gap-5 kiosk:gap-5">
-                        {[
-                          { value: "straight", label: "Straight", pattern: "M 10 20 L 30 20 L 50 20 L 70 20" },
-                          { value: "wavy", label: "Wavy", pattern: "M 10 20 Q 20 10, 30 20 T 50 20 T 70 20" },
-                          { value: "curly", label: "Curly", pattern: "M 20 20 Q 30 10, 40 20 Q 50 30, 60 20" },
-                          { value: "coily", label: "Coily", pattern: "M 20 20 Q 25 10, 30 20 Q 35 30, 40 20 Q 45 10, 50 20 Q 55 30, 60 20" }
-                        ].map(({ value, label, pattern }) => (
-                          <button
-                            key={value}
-                            type="button"
-                            onClick={() => handlePreferenceChange("hairType", value)}
-                            className={`p-3 sm:p-4 md:p-5 lg:p-6 xl:p-7 desktop:p-6 kiosk:p-10 rounded-xl sm:rounded-2xl desktop:rounded-xl border-[3px] desktop:border-4 transition-all duration-300 transform hover:scale-105 active:scale-95 flex flex-col items-center justify-center gap-2 sm:gap-2.5 desktop:gap-3 ${
-                              preferences.hairType === value
-                                ? "border-[#160B53] bg-white shadow-xl scale-105"
-                                : "border-gray-300 bg-white hover:border-purple-300 hover:bg-purple-50"
-                            }`}
-                            title={label}
-                          >
-                            <svg 
-                              className={`w-full h-12 sm:h-14 md:h-16 lg:h-18 xl:h-20 kiosk:h-32 ${
-                                preferences.hairType === value ? "text-[#160B53]" : "text-[#160B53]"
-                              }`}
-                              viewBox="0 0 80 40"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="4"
-                              strokeLinecap="round"
-                            >
-                              <path d={pattern} />
-                            </svg>
-                            <span className={`text-sm sm:text-base md:text-lg lg:text-lg xl:text-xl desktop:text-base kiosk:text-2xl font-semibold ${
-                              preferences.hairType === value ? "text-[#160B53]" : "text-gray-700"
-                            }`}>{label}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Hair Color Section with Color Wheel */}
-                    <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-xl sm:rounded-2xl p-4 sm:p-5 lg:p-6 xl:p-8 desktop:p-6 kiosk:p-8 border-[3px] desktop:border-4 border-purple-100 shadow-lg hover:shadow-xl transition-shadow">
-                      <div className="flex items-center gap-3 sm:gap-3 lg:gap-4 mb-3 sm:mb-4 lg:mb-5 desktop:mb-4 kiosk:mb-6">
-                        <div className="p-2 sm:p-2.5 lg:p-3 desktop:p-3 bg-[#160B53] rounded-lg">
-                          <PaletteIcon className="h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7 lg:h-8 lg:w-8 xl:h-9 xl:w-9 desktop:h-8 desktop:w-8 kiosk:h-12 kiosk:w-12 text-white" />
-                        </div>
-                        <span className="text-base sm:text-lg md:text-xl lg:text-2xl xl:text-3xl desktop:text-2xl kiosk:text-5xl font-bold text-gray-800">Hair Color</span>
-                      </div>
-                      
-                      {/* Quick Color Swatches */}
-                      <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 sm:gap-4 lg:gap-4 desktop:gap-5 kiosk:gap-5">
-                        {[
-                          { value: "black", label: "Black", color: "#1C1C1C" },
-                          { value: "brown", label: "Brown", color: "#8B4513" },
-                          { value: "blonde", label: "Blonde", color: "#F5DEB3" },
-                          { value: "red", label: "Red", color: "#A0522D" },
-                          { value: "gray", label: "Gray", color: "#808080" },
-                          { value: "other", label: "Color Wheel", color: customHairColor, isWheel: true }
-                        ].map((colorOption) => (
-                          <button
-                            key={colorOption.value}
-                            type="button"
-                            onClick={() => {
-                              if (colorOption.isWheel) {
-                                setShowColorWheelModal(true);
-                                handlePreferenceChange("hairColor", "other");
-                              } else {
-                                handlePreferenceChange("hairColor", colorOption.value);
-                                setShowColorWheelModal(false);
-                              }
-                            }}
-                            className={`p-4 sm:p-5 desktop:p-5 rounded-xl sm:rounded-2xl desktop:rounded-xl border-[3px] desktop:border-4 transition-all duration-300 transform hover:scale-110 active:scale-95 flex flex-col items-center gap-2 ${
-                              preferences.hairColor === colorOption.value
-                                ? "border-[#160B53] shadow-xl scale-110 ring-4 ring-purple-200"
-                                : "border-gray-300 hover:border-purple-300"
-                            }`}
-                          >
-                            {colorOption.isWheel ? (
-                              <>
-                                <PaletteIcon className={`h-8 w-8 sm:h-10 sm:w-10 md:h-12 md:w-12 lg:h-14 lg:w-14 kiosk:h-20 kiosk:w-20 ${
-                                  preferences.hairColor === colorOption.value ? "text-[#160B53]" : "text-gray-600"
-                                }`} />
-                                <span className={`text-sm sm:text-base md:text-lg lg:text-lg xl:text-xl kiosk:text-2xl font-semibold text-center ${
-                                  preferences.hairColor === colorOption.value ? "text-[#160B53]" : "text-gray-700"
-                                }`}>{colorOption.label}</span>
-                              </>
-                            ) : (
-                              <>
-                                <div
-                                  className={`w-10 h-10 sm:w-12 sm:h-12 lg:w-14 lg:h-14 xl:w-16 xl:h-16 kiosk:w-20 kiosk:h-20 rounded-full border-2 transition-all ${
-                                    preferences.hairColor === colorOption.value
-                                      ? "border-[#160B53] ring-4 ring-purple-200 shadow-lg"
-                                      : "border-gray-300"
-                                  }`}
-                                  style={{ backgroundColor: colorOption.color }}
-                                />
-                                <span className={`text-sm sm:text-base md:text-lg lg:text-lg xl:text-xl kiosk:text-2xl font-semibold ${
-                                  preferences.hairColor === colorOption.value ? "text-[#160B53]" : "text-gray-700"
-                                }`}>{colorOption.label}</span>
-                              </>
-                            )}
-                          </button>
-                        ))}
-                      </div>
+                          </div>
+                          {/* Selected indicator */}
+                          {preferences.hairLength === length.toLowerCase() && (
+                            <div className="absolute top-2 right-2 w-8 h-8 sm:w-10 sm:h-10 bg-[#160B53] rounded-full flex items-center justify-center">
+                              <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                            </div>
+                          )}
+                        </button>
+                      ))}
                     </div>
                   </div>
-
-                  {/* Right Column */}
-                  <div className="space-y-6 sm:space-y-7 lg:space-y-8 xl:space-y-10 kiosk:space-y-12 overflow-y-auto min-h-0 flex flex-col">
+                )}
+                
+                {/* Step 3: Hair Type */}
+                {preferenceStep === 3 && (
+                  <div className="animate-fade-in w-full max-w-4xl flex flex-col">
+                    <div className="grid grid-cols-4 gap-3 sm:gap-5">
+                      {[
+                        { value: "straight", label: "Straight", maleImage: "/HairType/straightM.png", femaleImage: "/HairType/straight.png" },
+                        { value: "wavy", label: "Wavy", maleImage: "/HairType/wavyM.png", femaleImage: "/HairType/wavy.png" },
+                        { value: "curly", label: "Curly", maleImage: "/HairType/curlyM.png", femaleImage: "/HairType/curly.png" },
+                        { value: "coily", label: "Coily", maleImage: "/HairType/coilyM.png", femaleImage: "/HairType/coily.png" }
+                      ].map(({ value, label, maleImage, femaleImage }) => (
+                        <button
+                          key={value}
+                          onClick={() => {
+                            handlePreferenceChange("hairType", value);
+                            setTimeout(() => setPreferenceStep(4), 300);
+                          }}
+                          className={`relative overflow-hidden rounded-2xl border-4 transition-all duration-300 transform hover:scale-105 active:scale-95 aspect-[3/4] ${
+                            preferences.hairType === value
+                              ? "border-[#160B53] shadow-xl ring-4 ring-[#160B53]/30"
+                              : "border-transparent hover:border-purple-300"
+                          }`}
+                        >
+                          <img 
+                            src={preferences.gender === "male" ? maleImage : femaleImage} 
+                            alt={label}
+                            className="w-full h-full object-cover"
+                          />
+                          {/* Gradient overlay */}
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+                          {/* Label */}
+                          <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4">
+                            <span className="text-white text-lg sm:text-xl lg:text-2xl font-bold drop-shadow-lg">
+                              {label}
+                            </span>
+                          </div>
+                          {/* Selected indicator */}
+                          {preferences.hairType === value && (
+                            <div className="absolute top-2 right-2 w-8 h-8 sm:w-10 sm:h-10 bg-[#160B53] rounded-full flex items-center justify-center">
+                              <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Step 4: Hair Color */}
+                {preferenceStep === 4 && (
+                  <div className="animate-fade-in w-full max-w-5xl flex flex-col gap-6">
+                    <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-9 gap-3 sm:gap-4">
+                      {[
+                        { value: "jet-black", label: "Jet Black", color: "#0a0a0a" },
+                        { value: "natural-black", label: "Natural Black", color: "#1c1c1c" },
+                        { value: "dark-brown", label: "Dark Brown", color: "#3b2314" },
+                        { value: "medium-brown", label: "Medium Brown", color: "#5c4033" },
+                        { value: "light-brown", label: "Light Brown", color: "#8b6914" },
+                        { value: "chestnut", label: "Chestnut", color: "#954535" },
+                        { value: "caramel", label: "Caramel", color: "#a67b5b" },
+                        { value: "honey-blonde", label: "Honey Blonde", color: "#c9a86c" },
+                        { value: "golden-blonde", label: "Golden Blonde", color: "#d4a84b" },
+                        { value: "platinum-blonde", label: "Platinum Blonde", color: "#e8e4c9" },
+                        { value: "ash-blonde", label: "Ash Blonde", color: "#b8a990" },
+                        { value: "strawberry-blonde", label: "Strawberry Blonde", color: "#cc8866" },
+                        { value: "auburn", label: "Auburn", color: "#922724" },
+                        { value: "copper", label: "Copper", color: "#b87333" },
+                        { value: "burgundy", label: "Burgundy", color: "#722f37" },
+                        { value: "red", label: "Red", color: "#8b0000" },
+                        { value: "silver-gray", label: "Silver Gray", color: "#a8a8a8" },
+                        { value: "pink", label: "Pink", color: "#ff69b4" },
+                        { value: "purple", label: "Purple", color: "#800080" },
+                        { value: "blue", label: "Blue", color: "#0066cc" },
+                        { value: "green", label: "Green", color: "#228b22" },
+                        { value: "orange", label: "Orange", color: "#ff8c00" },
+                        { value: "teal", label: "Teal", color: "#008080" },
+                        { value: "lavender", label: "Lavender", color: "#e6e6fa" },
+                        { value: "rose-gold", label: "Rose Gold", color: "#b76e79" },
+                        { value: "pastel-pink", label: "Pastel Pink", color: "#ffd1dc" },
+                        { value: "electric-blue", label: "Electric Blue", color: "#7df9ff" }
+                      ].map(({ value, label, color }) => (
+                        <button
+                          key={value}
+                          onClick={() => {
+                            handlePreferenceChange("hairColor", value);
+                            setTimeout(() => setPreferenceStep(5), 300);
+                          }}
+                          className={`p-3 sm:p-4 rounded-xl border-4 transition-all duration-300 transform hover:scale-105 active:scale-95 flex flex-col items-center justify-center gap-2 bg-white ${
+                            preferences.hairColor === value
+                              ? "border-[#160B53] shadow-xl ring-4 ring-[#160B53]/30"
+                              : "border-gray-200 hover:border-purple-300"
+                          }`}
+                        >
+                          <div
+                            className="w-12 h-12 sm:w-14 sm:h-14 lg:w-16 lg:h-16 rounded-full border-2 border-gray-300 shadow-inner"
+                            style={{ background: color }}
+                          />
+                          <span className={`text-[10px] sm:text-xs lg:text-sm font-bold text-center leading-tight ${
+                            preferences.hairColor === value ? "text-[#160B53]" : "text-gray-700"
+                          }`}>
+                            {label}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                {/* Step 5: Style Preferences */}
+                {preferenceStep === 5 && (
+                  <div className="animate-fade-in w-full max-w-5xl flex flex-col">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+                      {[
+                        { name: "Professional", image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=500&fit=crop&crop=face" },
+                        { name: "Casual", image: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&h=500&fit=crop&crop=face" },
+                        { name: "Elegant", image: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=500&fit=crop&crop=face" },
+                        { name: "Trendy", image: "https://images.unsplash.com/photo-1605497788044-5a32c7078486?w=400&h=500&fit=crop&crop=face" },
+                        { name: "Classic", image: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=500&fit=crop&crop=face" },
+                        { name: "Bold", image: "https://images.unsplash.com/photo-1580489944761-15a19d654956?w=400&h=500&fit=crop&crop=face" },
+                        { name: "Natural", image: "https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=400&h=500&fit=crop&crop=face" },
+                        { name: "Edgy", image: "https://images.unsplash.com/photo-1492106087820-71f1a00d2b11?w=400&h=500&fit=crop&crop=face" }
+                      ].map(({ name, image }) => (
+                        <button
+                          key={name}
+                          onClick={() => toggleStylePreference(name)}
+                          className={`relative overflow-hidden rounded-2xl border-4 transition-all duration-300 transform hover:scale-105 active:scale-95 aspect-[3/4] ${
+                            preferences.stylePreferences?.includes(name)
+                              ? "border-[#160B53] shadow-xl ring-4 ring-[#160B53]/30"
+                              : "border-transparent hover:border-purple-300"
+                          }`}
+                        >
+                          <img 
+                            src={image} 
+                            alt={name}
+                            className="w-full h-full object-cover"
+                          />
+                          {/* Gradient overlay */}
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+                          {/* Label */}
+                          <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4">
+                            <span className="text-white text-lg sm:text-xl lg:text-2xl font-bold drop-shadow-lg">
+                              {name}
+                            </span>
+                          </div>
+                          {/* Selected indicator */}
+                          {preferences.stylePreferences?.includes(name) && (
+                            <div className="absolute top-2 right-2 w-8 h-8 sm:w-10 sm:h-10 bg-[#160B53] rounded-full flex items-center justify-center">
+                              <CheckCircle className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
                     
-                    {/* Style Preferences Section */}
-                    <div className="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl sm:rounded-2xl p-4 sm:p-5 lg:p-6 xl:p-8 desktop:p-6 kiosk:p-8 border-[3px] desktop:border-4 border-purple-100 shadow-lg hover:shadow-xl transition-shadow">
-                      <div className="flex items-center gap-3 sm:gap-3 lg:gap-4 mb-3 sm:mb-4 lg:mb-5 desktop:mb-4 kiosk:mb-6">
-                        <div className="p-2 sm:p-2.5 lg:p-3 desktop:p-3 bg-[#160B53] rounded-lg">
-                          <Sparkles className="h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7 lg:h-8 lg:w-8 xl:h-9 xl:w-9 desktop:h-8 desktop:w-8 kiosk:h-12 kiosk:w-12 text-white" />
-                        </div>
-                        <span className="text-base sm:text-lg md:text-xl lg:text-2xl xl:text-3xl desktop:text-2xl kiosk:text-5xl font-bold text-gray-800">Style Preferences</span>
-                        <span className="text-sm sm:text-base md:text-lg lg:text-lg xl:text-xl desktop:text-base kiosk:text-2xl text-gray-500 ml-auto">(Select multiple)</span>
-                      </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 lg:gap-4 desktop:gap-5 kiosk:gap-5">
-                        {[
-                          { value: "Professional", image: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&h=400&fit=crop&q=80" },
-                          { value: "Casual", image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop&q=80" },
-                          { value: "Elegant", image: "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&h=400&fit=crop&q=80" },
-                          { value: "Trendy", image: "https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?w=400&h=400&fit=crop&q=80" },
-                          { value: "Classic", image: "https://images.unsplash.com/photo-1487412720507-e7ab37603c6f?w=400&h=400&fit=crop&q=80" },
-                          { value: "Bold", image: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&h=400&fit=crop&q=80" },
-                          { value: "Natural", image: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=400&fit=crop&q=80" },
-                          { value: "Edgy", image: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&h=400&fit=crop&q=80" }
-                        ].map(({ value, image }) => (
+                    {/* Done button */}
+                    <div className="mt-8 flex justify-center">
+                      <button
+                        onClick={() => setPreferenceStep(6)}
+                        className="flex items-center gap-3 px-10 py-4 bg-[#160B53] text-white text-xl font-semibold rounded-xl hover:bg-[#1e0f6b] transition-colors"
+                      >
+                        Continue
+                        <ArrowRight className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Step 6: Additional Notes */}
+                {preferenceStep === 6 && (
+                  <div className="animate-fade-in w-full h-full flex flex-col">
+                    {/* Quick suggestion buttons */}
+                    <div className="flex flex-wrap gap-2 justify-center px-4 pb-3">
+                      {[
+                        "Low maintenance",
+                        "Easy to style",
+                        "Round face",
+                        "Oval face",
+                        "Square face",
+                        "Thin hair",
+                        "Thick hair",
+                        "Work appropriate",
+                        "Youthful look",
+                        "Mature look"
+                      ].map((suggestion) => (
+                        <button
+                          key={suggestion}
+                          onClick={() => {
+                            const current = customDescription || "";
+                            if (!current.includes(suggestion)) {
+                              setCustomDescription(current ? `${current}, ${suggestion}` : suggestion);
+                            }
+                          }}
+                          className={`px-4 py-2 rounded-full border-2 text-sm font-medium transition-all ${
+                            customDescription?.includes(suggestion)
+                              ? "bg-[#160B53] text-white border-[#160B53]"
+                              : "bg-white text-gray-700 border-gray-300 hover:border-[#160B53] hover:text-[#160B53]"
+                          }`}
+                        >
+                          {suggestion}
+                        </button>
+                      ))}
+                    </div>
+                    
+                    {/* Text display area - takes remaining space */}
+                    <div className="flex-1 mx-4 mb-3 p-4 text-lg border-2 border-gray-200 rounded-xl bg-white overflow-y-auto">
+                      {customDescription || <span className="text-gray-400">Tap suggestions or use keyboard below...</span>}
+                    </div>
+                    
+                    {/* Continue button */}
+                    <div className="flex justify-center pb-3">
+                      <button
+                        onClick={() => {
+                          stopCamera();
+                          setCurrentStep(7);
+                        }}
+                        className="flex items-center gap-3 px-10 py-4 bg-[#160B53] text-white text-xl font-semibold rounded-xl hover:bg-[#1e0f6b] transition-colors"
+                      >
+                        Continue to Camera
+                        <ArrowRight className="w-5 h-5" />
+                      </button>
+                    </div>
+                    
+                    {/* Virtual Keyboard - fixed at bottom */}
+                    <div className="bg-gray-100 p-2 space-y-1">
+                      {/* Row 1 */}
+                      <div className="flex gap-1">
+                        {['Q','W','E','R','T','Y','U','I','O','P'].map((key) => (
                           <button
-                            key={value}
-                            type="button"
-                            onClick={() => toggleStylePreference(value)}
-                            className={`p-0 rounded-xl sm:rounded-2xl desktop:rounded-xl border-[3px] desktop:border-4 transition-all duration-300 transform hover:scale-105 active:scale-95 flex flex-col items-center justify-center relative overflow-hidden ${
-                              preferences.stylePreferences.includes(value)
-                                ? "border-[#160B53] bg-white shadow-xl scale-105"
-                                : "border-gray-300 bg-white hover:border-purple-300 hover:bg-purple-50"
-                            }`}
-                            title={value}
+                            key={key}
+                            onClick={() => setCustomDescription((prev) => (prev || '') + key.toLowerCase())}
+                            className="flex-1 py-6 bg-white rounded-lg text-2xl font-semibold active:bg-gray-200"
                           >
-                            <img 
-                              src={image} 
-                              alt={value}
-                              className="w-full h-32 sm:h-36 md:h-40 lg:h-36 xl:h-40 desktop:h-40 kiosk:h-56 object-cover"
-                              onError={(e) => {
-                                // Fallback to a placeholder if image fails to load
-                                e.target.src = `https://via.placeholder.com/200x200/cccccc/666666?text=${value}`;
-                              }}
-                            />
-                            <span className={`text-sm sm:text-base md:text-lg lg:text-base xl:text-lg desktop:text-sm kiosk:text-2xl font-semibold py-2 px-2 desktop:py-2 desktop:px-2 w-full text-center ${
-                              preferences.stylePreferences.includes(value) ? "text-[#160B53] bg-purple-50" : "text-gray-700 bg-white"
-                            }`}>{value}</span>
+                            {key}
                           </button>
                         ))}
                       </div>
-                    </div>
-
-                    {/* Additional Notes Section */}
-                    <div className="bg-gradient-to-br from-cyan-50 to-blue-50 rounded-xl sm:rounded-2xl p-5 sm:p-6 lg:p-8 desktop:p-6 kiosk:p-8 border-[3px] desktop:border-4 border-cyan-100 shadow-lg hover:shadow-xl transition-shadow flex-1 flex flex-col min-h-0">
-                      <div className="flex items-center gap-3 sm:gap-4 mb-3 sm:mb-4 desktop:mb-4 kiosk:mb-5">
-                        <div className="p-2 sm:p-2.5 desktop:p-3 bg-[#160B53] rounded-lg">
-                          <Type className="h-6 w-6 sm:h-7 sm:w-7 md:h-8 md:w-8 lg:h-9 lg:w-9 desktop:h-8 desktop:w-8 kiosk:h-12 kiosk:w-12 text-white" />
-                        </div>
-                        <span className="text-lg sm:text-xl md:text-2xl lg:text-2xl xl:text-3xl desktop:text-xl kiosk:text-5xl font-bold text-gray-800">Additional Notes</span>
+                      {/* Row 2 */}
+                      <div className="flex gap-1 px-4">
+                        {['A','S','D','F','G','H','J','K','L'].map((key) => (
+                          <button
+                            key={key}
+                            onClick={() => setCustomDescription((prev) => (prev || '') + key.toLowerCase())}
+                            className="flex-1 py-6 bg-white rounded-lg text-2xl font-semibold active:bg-gray-200"
+                          >
+                            {key}
+                          </button>
+                        ))}
                       </div>
-                      <div className="relative flex-1 flex flex-col min-h-0">
-                        <textarea
-                          value={customDescription + (interimTranscript || '')}
-                          onChange={(e) => {
-                            // When user manually types, update customDescription and clear interim
-                            const newValue = e.target.value;
-                            // Remove any interim transcript from the value if user is typing
-                            if (interimTranscript && newValue.endsWith(interimTranscript)) {
-                              setCustomDescription(newValue.slice(0, -interimTranscript.length));
-                            } else {
-                              setCustomDescription(newValue);
-                            }
-                            setInterimTranscript('');
-                          }}
-                          placeholder="Speak or type your preferences, special requests, or any additional information..."
-                          className="w-full h-full px-4 sm:px-5 desktop:px-5 py-3 sm:py-4 desktop:py-4 text-base sm:text-lg md:text-xl lg:text-xl xl:text-2xl desktop:text-base kiosk:text-3xl border-[3px] desktop:border-4 border-gray-300 rounded-xl sm:rounded-2xl desktop:rounded-xl focus:ring-4 focus:ring-[#160B53] focus:border-[#160B53] resize-none pr-14 sm:pr-16 desktop:pr-16 md:pr-20 transition-all bg-white"
-                        />
-                        {/* Mic Button - Inside Textarea */}
+                      {/* Row 3 */}
+                      <div className="flex gap-1 px-8">
+                        {['Z','X','C','V','B','N','M'].map((key) => (
+                          <button
+                            key={key}
+                            onClick={() => setCustomDescription((prev) => (prev || '') + key.toLowerCase())}
+                            className="flex-1 py-6 bg-white rounded-lg text-2xl font-semibold active:bg-gray-200"
+                          >
+                            {key}
+                          </button>
+                        ))}
                         <button
-                          type="button"
-                          onClick={isListening ? stopVoiceRecognition : startVoiceRecognition}
-                          className={`absolute right-3 sm:right-4 top-3 sm:top-4 p-2.5 sm:p-3 md:p-4 rounded-lg transition-all transform hover:scale-110 active:scale-95 shadow-lg z-10 ${
-                            isListening
-                              ? "bg-red-500 hover:bg-red-600 text-white animate-pulse border-2 border-red-600"
-                              : "bg-[#160B53] hover:bg-[#12094A] text-white border-2 border-[#160B53]"
-                          }`}
-                          title={isListening ? "Stop recording - Click to stop voice input" : "Start recording - Click to speak"}
+                          onClick={() => setCustomDescription((prev) => (prev || '').slice(0, -1))}
+                          className="px-6 py-6 bg-gray-300 rounded-lg text-2xl font-semibold active:bg-gray-400"
                         >
-                          {isListening ? <MicOff className="h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7" /> : <Mic className="h-5 w-5 sm:h-6 sm:w-6 md:h-7 md:w-7" />}
+                          ⌫
                         </button>
                       </div>
-                      {isListening && (
-                        <div className="mt-3 p-3 sm:p-4 bg-red-50 border-2 border-red-300 rounded-lg flex items-center gap-3 animate-pulse">
-                          <Volume2 className="h-5 w-5 sm:h-6 sm:w-6 text-red-600 animate-pulse flex-shrink-0" />
-                          <p className="text-sm sm:text-base md:text-lg lg:text-xl text-red-600 font-semibold">
-                            🎤 Listening... Speak now! Your words are typing in real-time.
-                          </p>
-                        </div>
-                      )}
-                      {voiceError && (
-                        <div className="mt-3 p-3 sm:p-4 bg-yellow-50 border-2 border-yellow-300 rounded-lg flex items-start gap-3">
-                          <AlertTriangle className="h-5 w-5 sm:h-6 sm:w-6 text-yellow-600 flex-shrink-0 mt-0.5" />
-                          <p className="text-sm sm:text-base md:text-lg lg:text-xl text-yellow-800 font-semibold">
-                            {voiceError}
-                          </p>
-                        </div>
-                      )}
+                      {/* Row 4 - Space and special */}
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => setCustomDescription((prev) => (prev || '') + ', ')}
+                          className="px-6 py-6 bg-white rounded-lg text-2xl font-semibold active:bg-gray-200"
+                        >
+                          ,
+                        </button>
+                        <button
+                          onClick={() => setCustomDescription((prev) => (prev || '') + ' ')}
+                          className="flex-1 py-6 bg-white rounded-lg text-xl font-semibold active:bg-gray-200"
+                        >
+                          Space
+                        </button>
+                        <button
+                          onClick={() => setCustomDescription('')}
+                          className="px-6 py-6 bg-gray-300 rounded-lg text-xl font-semibold active:bg-gray-400"
+                        >
+                          Clear
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-
-                {/* Action Buttons - Continue to Camera and AR Try-On */}
-                <div className="flex flex-col desktop:flex-row desktop:items-center desktop:justify-center items-center gap-4 sm:gap-5 lg:gap-6 desktop:gap-6 kiosk:gap-8 mt-6 sm:mt-7 lg:mt-8 desktop:mt-6 kiosk:mt-8 pt-6 sm:pt-7 desktop:pt-6 kiosk:pt-8 border-t-[3px] desktop:border-t-4 border-purple-100 flex-shrink-0">
-                  <Button
-                    onClick={() => {
-                      setCurrentStep(7);
-                      // Camera will auto-start via useEffect when step 7 is reached
-                    }}
-                    disabled={!preferences.gender}
-                    className="px-8 py-4 sm:px-10 sm:py-5 md:px-12 md:py-6 lg:px-16 lg:py-7 xl:px-20 xl:py-8 2xl:px-24 2xl:py-10 desktop:px-12 desktop:py-4 desktop:text-base desktop:min-w-[220px] kiosk:px-40 kiosk:py-16 kiosk:min-h-[100px] text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl 2xl:text-2xl kiosk:text-3xl font-bold bg-[#160B53] hover:bg-[#12094A] text-white rounded-xl sm:rounded-2xl lg:rounded-3xl desktop:rounded-xl shadow-xl sm:shadow-2xl desktop:shadow-xl kiosk:shadow-[0_20px_60px_rgba(0,0,0,0.3)] disabled:opacity-50 disabled:cursor-not-allowed transition-all hover:scale-105 desktop:hover:scale-105 kiosk:hover:scale-110 transform active:scale-95"
-                  >
-                    Continue to Camera
-                  </Button>
-                  
-                  {/* OR divider - Horizontal on mobile, Vertical on desktop */}
-                  <div className="flex desktop:flex-col desktop:items-center desktop:justify-center items-center gap-3 sm:gap-4 desktop:gap-3 w-full desktop:w-auto max-w-md desktop:max-w-none">
-                    <div className="flex-1 desktop:flex-none desktop:h-10 desktop:w-px desktop:bg-gray-300 h-px bg-gray-300"></div>
-                    <span className="text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl 2xl:text-2xl desktop:text-sm desktop:px-3 kiosk:text-3xl text-gray-500 font-semibold desktop:whitespace-nowrap">OR</span>
-                    <div className="flex-1 desktop:flex-none desktop:h-10 desktop:w-px desktop:bg-gray-300 h-px bg-gray-300"></div>
-                  </div>
-                  
-                  {/* AR Try-On Button */}
-                  <Button
-                    onClick={() => {
-                      setCurrentStep(2);
-                      // AR section will auto-start camera via useEffect when step 2 is reached
-                    }}
-                    className="px-8 py-4 sm:px-10 sm:py-5 md:px-12 md:py-6 lg:px-16 lg:py-7 xl:px-20 xl:py-8 2xl:px-24 2xl:py-10 desktop:px-12 desktop:py-4 desktop:text-base desktop:min-w-[220px] kiosk:px-40 kiosk:py-16 kiosk:min-h-[100px] text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl 2xl:text-2xl kiosk:text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white rounded-xl sm:rounded-2xl lg:rounded-3xl desktop:rounded-xl shadow-xl sm:shadow-2xl desktop:shadow-xl kiosk:shadow-[0_20px_60px_rgba(0,0,0,0.3)] transition-all hover:scale-105 desktop:hover:scale-105 kiosk:hover:scale-110 transform active:scale-95"
-                  >
-                    Try out AR Hair Try On
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+                )}
+                
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -3719,6 +3326,21 @@ export default function ARHairTryOn() {
       {/* Step 7: Camera - Face/Skintone Checker */}
       {currentStep === 7 && (
         <div className="flex-1 flex flex-col bg-black overflow-hidden relative animate-fade-in">
+          {/* Back Button - Top Left */}
+          <div className="absolute top-4 left-4 z-30">
+            <Button
+              onClick={() => {
+                stopCamera();
+                setCurrentStep(1); // Go back to preferences
+              }}
+              variant="outline"
+              className="bg-white/90 hover:bg-white text-gray-800 text-lg px-6 py-3 h-auto rounded-xl shadow-lg"
+            >
+              <ArrowLeft className="h-5 w-5 mr-2" />
+              Back
+            </Button>
+          </div>
+          
           {/* Camera View - fills available space */}
           <div className="flex-1 relative overflow-hidden">
             {/* Video element - fills container */}
@@ -3739,6 +3361,22 @@ export default function ARHairTryOn() {
               className="absolute inset-0 w-full h-full pointer-events-none"
               style={{ zIndex: 2 }}
             />
+            
+            {/* Face Guide Frame - Corner brackets for face positioning */}
+            {isARActive && !scanningComplete && !isAnalyzing && (
+              <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+                <div className="relative w-80 h-96 sm:w-96 sm:h-[450px] md:w-[450px] md:h-[520px] lg:w-[500px] lg:h-[580px]">
+                  {/* Top Left Corner */}
+                  <div className={`absolute top-0 left-0 w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20 border-t-4 border-l-4 ${facePositioned ? 'border-green-400' : 'border-white'} rounded-tl-lg`} />
+                  {/* Top Right Corner */}
+                  <div className={`absolute top-0 right-0 w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20 border-t-4 border-r-4 ${facePositioned ? 'border-green-400' : 'border-white'} rounded-tr-lg`} />
+                  {/* Bottom Left Corner */}
+                  <div className={`absolute bottom-0 left-0 w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20 border-b-4 border-l-4 ${facePositioned ? 'border-green-400' : 'border-white'} rounded-bl-lg`} />
+                  {/* Bottom Right Corner */}
+                  <div className={`absolute bottom-0 right-0 w-14 h-14 sm:w-16 sm:h-16 md:w-20 md:h-20 border-b-4 border-r-4 ${facePositioned ? 'border-green-400' : 'border-white'} rounded-br-lg`} />
+                </div>
+              </div>
+            )}
                   
             {/* Start Button - Simple */}
             {!isARActive && !isLoading && (
@@ -3765,40 +3403,42 @@ export default function ARHairTryOn() {
               </div>
             )}
                   
-            {/* Face Positioning Guide - Kiosk Size - Only show in Step 7 (Camera mode), not in AR Mode */}
+            {/* Face Positioning Guide - Text at bottom, not blocking face */}
             {isARActive && currentStep === 7 && !scanningComplete && !isAnalyzing && !isScanning && (
-              <div className="absolute inset-0 flex items-center justify-center z-20 pointer-events-none">
-                <div className="bg-black/70 backdrop-blur-sm rounded-lg sm:rounded-xl lg:rounded-2xl p-4 sm:p-6 md:p-8 lg:p-10 xl:p-12 max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg xl:max-w-xl 2xl:max-w-2xl mx-4 text-center text-white">
-                  <div className="mb-3 sm:mb-4 lg:mb-6">
+              <div className="absolute bottom-8 left-0 right-0 flex flex-col items-center z-20">
+                {faceDetected && facePositioned ? (
+                  <>
+                    {/* Camera Shutter Button */}
+                    <button
+                      onClick={handleManualCapture}
+                      className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-white border-4 border-gray-300 flex items-center justify-center shadow-lg active:scale-95 transition-transform"
+                    >
+                      <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full bg-white border-4 border-gray-400 hover:bg-gray-100 active:bg-red-500 transition-colors" />
+                    </button>
+                  </>
+                ) : (
+                  <div className="bg-black/60 backdrop-blur-sm rounded-xl px-6 py-4 text-center text-white pointer-events-none">
                     {faceDetected ? (
-                      facePositioned ? (
-                        <>
-                          <CheckCircle2 className="h-12 w-12 sm:h-16 sm:w-16 md:h-20 md:w-20 lg:h-24 lg:w-24 mx-auto mb-2 sm:mb-3 lg:mb-4 text-green-400" />
-                          <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl font-semibold mb-1 sm:mb-2">Face Positioned!</p>
-                          <p className="text-sm sm:text-base md:text-lg lg:text-xl xl:text-2xl opacity-90">Preparing to scan...</p>
-                        </>
-                      ) : (
-                        <>
-                          <AlertCircle className="h-12 w-12 sm:h-16 sm:w-16 md:h-20 md:w-20 lg:h-24 lg:w-24 mx-auto mb-2 sm:mb-3 lg:mb-4 text-yellow-400" />
-                          <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl font-semibold mb-2 sm:mb-3 lg:mb-4">Position Your Face</p>
-                          <p className="text-sm sm:text-base md:text-lg lg:text-xl xl:text-2xl opacity-90">
-                            Move your face to the center and keep it straight
-                          </p>
-                        </>
-                      )
+                      <p className="text-lg sm:text-xl md:text-2xl font-semibold text-yellow-400">Move face to center</p>
                     ) : (
-                      <>
-                        <Scan className="h-12 w-12 sm:h-16 sm:w-16 md:h-20 md:w-20 lg:h-24 lg:w-24 mx-auto mb-2 sm:mb-3 lg:mb-4 text-blue-400 animate-pulse" />
-                        <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl xl:text-4xl font-semibold mb-1 sm:mb-2">Position Your Face</p>
-                        <p className="text-sm sm:text-base md:text-lg lg:text-xl xl:text-2xl opacity-90">Look straight at the camera</p>
-                      </>
+                      <p className="text-lg sm:text-xl md:text-2xl font-semibold">Position your face in the frame</p>
                     )}
                   </div>
+                )}
+              </div>
+            )}
+            
+            {/* Countdown Timer Overlay */}
+            {isScanning && isARActive && currentStep === 7 && (
+              <div className="absolute inset-0 flex items-center justify-center z-30 pointer-events-none">
+                <div className="text-9xl font-bold text-white drop-shadow-lg animate-pulse">
+                  {countdown}
                 </div>
               </div>
             )}
 
-            {/* Scanning Countdown Overlay - Kiosk Size - Only show in Step 7 (Camera mode), not in AR Mode */}
+            {/* Manual capture mode - automatic overlays disabled */}
+            {/* Scanning Countdown Overlay - DISABLED for manual capture
             {isScanning && isARActive && currentStep === 7 && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/40 z-30 pointer-events-none">
                 <div className="text-center text-white">
@@ -3810,43 +3450,15 @@ export default function ARHairTryOn() {
                 </div>
               </div>
             )}
+            */}
             
-            {/* Analyzing overlay - Kiosk Size - Only show in Step 7 (Camera mode), not in AR Mode */}
-            {isAnalyzing && isARActive && currentStep === 7 && scanningComplete && (
+            {/* Analyzing overlay - Show when user captures and analysis is running */}
+            {isAnalyzing && isARActive && currentStep === 7 && (
               <div className="absolute inset-0 flex items-center justify-center bg-black/30 z-20 pointer-events-none">
                 <div className="text-center text-white bg-black/70 px-4 py-3 sm:px-6 sm:py-4 md:px-8 md:py-6 lg:px-12 lg:py-8 xl:px-16 xl:py-12 rounded-lg sm:rounded-xl lg:rounded-2xl backdrop-blur-sm">
                   <Loader2 className="h-8 w-8 sm:h-10 sm:w-10 md:h-12 md:w-12 lg:h-14 lg:w-14 xl:h-16 xl:w-16 mx-auto mb-2 sm:mb-3 lg:mb-4 animate-spin" />
                   <p className="text-sm sm:text-base md:text-lg lg:text-xl xl:text-2xl 2xl:text-3xl font-semibold">Analyzing facial structure...</p>
                 </div>
-              </div>
-            )}
-                
-            {/* Analysis Complete Badge - Only show in Step 7 (Camera mode), not in AR Mode */}
-            {analysisComplete && isARActive && currentStep === 7 && (
-              <div className="absolute bottom-4 sm:bottom-8 lg:bottom-12 xl:bottom-16 left-1/2 transform -translate-x-1/2 z-20 text-center animate-scale-in">
-                <div className="bg-green-500 text-white px-4 py-2 sm:px-6 sm:py-3 md:px-8 md:py-4 lg:px-10 lg:py-5 xl:px-12 xl:py-6 rounded-lg sm:rounded-xl mb-2 sm:mb-3 lg:mb-4 shadow-xl sm:shadow-2xl">
-                  <p className="text-sm sm:text-base md:text-lg lg:text-xl xl:text-2xl 2xl:text-3xl font-bold">✓ Analysis Complete!</p>
-                </div>
-                <Button
-                  onClick={proceedToSummary}
-                  className="bg-[#160B53] hover:bg-[#12094A] text-white text-sm sm:text-base md:text-lg lg:text-xl xl:text-2xl kiosk:text-4xl font-bold px-4 py-2 sm:px-6 sm:py-3 md:px-8 md:py-4 lg:px-10 lg:py-5 xl:px-12 xl:py-6 kiosk:px-32 kiosk:py-14 kiosk:min-h-[100px] rounded-lg sm:rounded-xl kiosk:rounded-3xl shadow-lg sm:shadow-xl kiosk:shadow-[0_20px_60px_rgba(0,0,0,0.3)] transition-all hover:scale-105 kiosk:hover:scale-110"
-                >
-                  Continue <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 lg:h-7 lg:w-7 xl:h-8 xl:w-8 ml-1 sm:ml-2 lg:ml-3 inline" />
-                </Button>
-              </div>
-            )}
-            
-            {/* Stop Camera Button - Kiosk Size */}
-            {isARActive && (
-              <div className="absolute top-2 sm:top-4 md:top-6 lg:top-8 right-2 sm:right-4 md:right-6 lg:right-8 z-20">
-                <Button
-                  onClick={stopCamera}
-                  variant="outline"
-                  className="bg-white/90 hover:bg-white text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl 2xl:text-2xl kiosk:text-4xl px-3 py-2 sm:px-4 sm:py-3 md:px-6 md:py-4 lg:px-8 lg:py-5 xl:px-10 xl:py-6 kiosk:px-24 kiosk:py-12 kiosk:min-h-[80px] h-auto rounded-lg sm:rounded-xl kiosk:rounded-3xl"
-                >
-                  <X className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 lg:h-7 lg:w-7 xl:h-8 xl:w-8 mr-1 sm:mr-2 lg:mr-3" />
-                  {analysisComplete ? 'Close' : 'Stop'}
-                </Button>
               </div>
             )}
           </div>
@@ -4108,6 +3720,24 @@ export default function ARHairTryOn() {
         <div className="flex-1 flex flex-col bg-black animate-fade-in min-h-0 overflow-hidden">
           {/* Image Display - Top Section */}
           <div className="relative flex-1 flex items-center justify-center overflow-hidden bg-black">
+            {/* Retake Button - Top Left */}
+            <div className="absolute top-4 left-4 z-20">
+              <Button
+                onClick={() => {
+                  setCapturedUserImage(null);
+                  setGeneratedImage(null);
+                  setRecommendations([]);
+                  setCurrentStep(7); // Go back to camera
+                  startCamera();
+                }}
+                variant="outline"
+                className="bg-white/90 hover:bg-white text-gray-800 text-lg px-6 py-3 h-auto rounded-xl shadow-lg"
+              >
+                <Camera className="h-5 w-5 mr-2" />
+                Retake Photo
+              </Button>
+            </div>
+            
             {/* Show generated image or captured photo */}
             {generatedImage ? (
               <img 
@@ -4127,23 +3757,10 @@ export default function ARHairTryOn() {
                 <p className="text-3xl font-semibold">Generate an image to see preview</p>
               </div>
             )}
-            
-            {/* Back Button - Top Left */}
-            <Button
-              onClick={() => {
-                setCurrentStep(3);
-                setGeneratedImage(null);
-              }}
-              variant="outline"
-              className="absolute top-6 left-6 bg-white/90 hover:bg-white text-xl px-6 py-4 h-auto rounded-xl border-2 z-10"
-            >
-              <ArrowLeft className="h-6 w-6 mr-2 inline" />
-              Back to Recommendations
-            </Button>
           </div>
 
-          {/* Recommendations Bar - Bottom Section (Like TikTok/Instagram Filters) */}
-          <div className="bg-white/95 backdrop-blur-sm border-t-4 border-purple-200 p-4 sm:p-6 lg:p-8">
+          {/* Recommendations Bar - Bottom Section */}
+          <div className="bg-gradient-to-t from-white via-white to-purple-50 border-t-4 border-purple-300 p-6 sm:p-8">
             {recommendations.length === 0 ? (
               <div className="text-center py-16">
                 <Loader2 className="h-16 w-16 mx-auto mb-4 animate-spin text-[#160B53]" />
@@ -4151,11 +3768,13 @@ export default function ARHairTryOn() {
               </div>
             ) : (
               <>
-                <h3 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-800 mb-4 text-center">
-                  Try These Styles
+                <h3 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-6 text-center flex items-center justify-center gap-3">
+                  <Sparkles className="h-8 w-8 text-purple-500" />
+                  Recommended For You
+                  <Sparkles className="h-8 w-8 text-purple-500" />
                 </h3>
                 <div 
-                  className="flex gap-4 sm:gap-6 lg:gap-8 overflow-x-auto pb-2" 
+                  className="flex gap-4 sm:gap-5 overflow-x-auto pb-2 px-2" 
                   style={{ 
                     scrollbarWidth: 'none', 
                     msOverflowStyle: 'none',
@@ -4166,20 +3785,56 @@ export default function ARHairTryOn() {
                     <div
                       key={style.id}
                       onClick={() => setSelectedRecommendationModal(style)}
-                      className="flex-shrink-0 w-48 sm:w-56 lg:w-64 cursor-pointer transition-all hover:scale-105 active:scale-95"
+                      className="flex-shrink-0 cursor-pointer transition-all duration-300 hover:scale-105 active:scale-95"
                     >
-                      <div className="bg-white border-4 border-gray-200 rounded-2xl shadow-xl hover:border-[#160B53] transition-all">
-                        <div className="relative bg-gray-100 rounded-t-xl" style={{ aspectRatio: "1/1" }}>
-                          <div className="absolute inset-0 flex items-center justify-center text-gray-400">
-                            <Sparkles className="h-12 w-12 sm:h-16 sm:w-16" />
-                          </div>
-                          <div className="absolute top-2 right-2 bg-[#160B53] text-white text-lg sm:text-xl px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg font-bold">
+                      <div className={`
+                        relative overflow-hidden rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300
+                        ${idx === 0 ? 'bg-gradient-to-br from-yellow-400 via-orange-400 to-pink-500' : 
+                          idx === 1 ? 'bg-gradient-to-br from-purple-500 via-pink-500 to-red-400' :
+                          'bg-gradient-to-br from-blue-500 via-purple-500 to-pink-400'}
+                        p-1
+                      `}>
+                        <div className="bg-white rounded-xl p-4 sm:p-5 min-w-[160px] sm:min-w-[180px]">
+                          {/* Match Score Badge */}
+                          <div className={`
+                            absolute -top-1 -right-1 w-14 h-14 sm:w-16 sm:h-16 flex items-center justify-center
+                            ${idx === 0 ? 'bg-yellow-400' : idx === 1 ? 'bg-purple-500' : 'bg-blue-500'}
+                            text-white font-bold text-lg sm:text-xl rounded-full shadow-lg
+                            border-4 border-white
+                          `}>
                             {style.matchScore}%
                           </div>
-                        </div>
-                        <div className="p-3 sm:p-4">
-                          <h4 className="text-lg sm:text-xl lg:text-2xl font-bold text-gray-800 text-center mb-1">{style.name}</h4>
-                          <p className="text-sm sm:text-base lg:text-lg text-gray-500 text-center">{style.category}</p>
+                          
+                          {/* Rank Badge */}
+                          {idx < 3 && (
+                            <div className={`
+                              inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-semibold mb-3
+                              ${idx === 0 ? 'bg-yellow-100 text-yellow-700' : 
+                                idx === 1 ? 'bg-gray-100 text-gray-600' : 
+                                'bg-orange-100 text-orange-600'}
+                            `}>
+                              {idx === 0 ? '🥇 Best Match' : idx === 1 ? '🥈 Great Choice' : '🥉 Good Fit'}
+                            </div>
+                          )}
+                          
+                          {/* Hairstyle Name */}
+                          <h4 className="text-xl sm:text-2xl font-bold text-gray-800 mb-2 pr-8">{style.name}</h4>
+                          
+                          {/* Category & Type */}
+                          <div className="flex flex-wrap gap-2 mb-3">
+                            <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-sm font-medium">
+                              {style.category}
+                            </span>
+                            <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">
+                              {style.hairType}
+                            </span>
+                          </div>
+                          
+                          {/* Try Button */}
+                          <div className="flex items-center justify-center gap-2 mt-4 py-2 bg-[#160B53] text-white rounded-xl font-semibold text-base sm:text-lg hover:bg-[#1a0d66] transition-colors">
+                            <Sparkles className="h-5 w-5" />
+                            Try This Style
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -4246,84 +3901,77 @@ export default function ARHairTryOn() {
                 </div>
               </div>
             )}
-            
-            {isARActive && (
-              <div className="absolute top-8 right-8 z-20">
-                <Button
-                  onClick={stopCamera}
-                  variant="outline"
-                  className="bg-white/90 hover:bg-white text-2xl px-10 py-6 h-auto rounded-xl"
-                >
-                  <X className="h-8 w-8 mr-3" />
-                  Stop Camera
-                </Button>
-              </div>
-            )}
           </div>
 
-          {/* Predefined Hairstyle Selection for AR */}
-          <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-sm p-4 sm:p-6 lg:p-8 border-t-4 border-purple-200">
-            <h3 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-800 mb-4 sm:mb-6 text-center">
-              Try On Styles (AR Mode)
-            </h3>
+          {/* Predefined Hairstyle Selection for AR - Filter Style */}
+          <div className="absolute bottom-0 left-0 right-0 bg-black/80 backdrop-blur-md p-6 border-t border-white/20">
             <div 
-              className="flex gap-3 sm:gap-4 lg:gap-6 overflow-x-auto pb-2 max-w-full" 
+              className="flex justify-center gap-6 overflow-x-auto pb-2" 
               style={{ 
                 scrollbarWidth: 'none', 
                 msOverflowStyle: 'none'
               }}
             >
-              {/* Show all predefined hairstyles, filtered by gender if specified */}
-              {hairstyleOptions
-                .filter(style => !preferences.gender || style.gender === preferences.gender || style.gender === "both")
-                .map((style) => (
-                <div
+              {/* Show all predefined hairstyles */}
+              {hairstyleOptions.map((style) => (
+                <button
                   key={style.id}
                   onClick={() => {
                     applyHairstyle(style);
                     setSelectedHairstyle(style);
                     console.log('🎨 [AR] Predefined hairstyle selected for AR:', style.name);
                   }}
-                  className={`flex-shrink-0 w-32 sm:w-40 lg:w-48 xl:w-56 p-3 sm:p-4 lg:p-5 rounded-xl border-4 cursor-pointer transition-all ${
+                  className={`flex-shrink-0 relative group transition-all duration-200 ${
                     selectedHairstyle?.id === style.id
-                      ? "border-[#160B53] bg-purple-50 scale-105"
-                      : "border-gray-300 hover:border-purple-400 hover:scale-105"
+                      ? "scale-110 z-10"
+                      : "hover:scale-105"
                   }`}
                 >
-                  <div className="relative bg-gray-100 rounded-lg mb-2 sm:mb-3" style={{ aspectRatio: "1/1" }}>
-                    <div className="absolute inset-0 flex items-center justify-center text-gray-400">
-                      <Scissors className="h-6 w-6 sm:h-8 sm:w-8 lg:h-10 lg:w-10" />
+                  {/* Circular Image Container - LARGER */}
+                  <div className={`w-28 h-28 sm:w-32 sm:h-32 md:w-36 md:h-36 rounded-full overflow-hidden border-4 transition-all ${
+                    selectedHairstyle?.id === style.id
+                      ? "border-white shadow-[0_0_25px_rgba(255,255,255,0.6)]"
+                      : "border-white/40 group-hover:border-white/80"
+                  }`}>
+                    <img 
+                      src={style.image} 
+                      alt={style.name}
+                      className="w-full h-full object-cover bg-gray-800"
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                        e.target.nextSibling.style.display = 'flex';
+                      }}
+                    />
+                    <div className="hidden w-full h-full items-center justify-center bg-gray-700 text-white">
+                      <Scissors className="h-10 w-10" />
                     </div>
                   </div>
-                  <h4 className="text-sm sm:text-base lg:text-lg font-bold text-gray-800 text-center">{style.name}</h4>
-                  <p className="text-xs sm:text-sm lg:text-base text-gray-500 text-center mt-1">{style.category}</p>
-                </div>
+                  
+                  {/* Selected Indicator */}
+                  {selectedHairstyle?.id === style.id && (
+                    <div className="absolute -top-1 -right-1 w-8 h-8 bg-green-500 rounded-full flex items-center justify-center border-2 border-white">
+                      <CheckCircle className="w-5 h-5 text-white" />
+                    </div>
+                  )}
+                </button>
               ))}
             </div>
-
-            {/* Navigation Buttons */}
-            <div className="flex justify-between mt-4 sm:mt-6 lg:mt-8 max-w-6xl mx-auto">
+            
+            {/* Back Button */}
+            <div className="flex justify-center mt-4">
               <Button
                 onClick={() => {
                   stopCamera();
                   setSelectedHairstyle(null);
-                  setCurrentStep(3);
+                  setAppMode(null);
+                  setCurrentStep(0);
+                  setShowLogo(false);
                 }}
                 variant="outline"
-                className="border-gray-300 text-lg sm:text-xl lg:text-2xl px-6 sm:px-8 lg:px-10 py-4 sm:py-5 lg:py-6 h-auto rounded-xl"
+                className="bg-white/10 hover:bg-white/20 border-white/30 text-white text-sm px-6 py-2 h-auto rounded-full"
               >
-                Back to Recommendations
-              </Button>
-              <Button
-                onClick={() => {
-                  stopCamera();
-                  setSelectedHairstyle(null);
-                  setCurrentStep(1);
-                }}
-                variant="outline"
-                className="border-gray-300 text-lg sm:text-xl lg:text-2xl px-6 sm:px-8 lg:px-10 py-4 sm:py-5 lg:py-6 h-auto rounded-xl"
-              >
-                Back to Preferences
+                <ArrowLeft className="h-4 w-4 mr-2" />
+                Back to Menu
               </Button>
             </div>
           </div>
@@ -4605,48 +4253,99 @@ export default function ARHairTryOn() {
 
       {/* Photo Preview Modal */}
       {showPhotoPreviewModal && capturedUserImage && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-8">
-          <Card className="max-w-4xl w-full bg-white rounded-2xl shadow-2xl overflow-hidden">
-            <CardContent className="p-12">
-              <div className="text-center mb-8">
-                <div className="inline-flex items-center justify-center w-20 h-20 bg-green-100 rounded-full mb-6">
-                  <CheckCircle className="h-12 w-12 text-green-600" />
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <Card className="max-w-3xl w-full bg-white rounded-2xl shadow-2xl overflow-hidden">
+            <CardContent className="p-8">
+              {isGeneratingRecommendations ? (
+                /* Loading State - Coffee Shop Style */
+                <div className="text-center py-12">
+                  <div className="relative mb-8">
+                    {/* Animated Scissors */}
+                    <div className="relative w-32 h-32 mx-auto">
+                      <Scissors className="h-24 w-24 text-[#160B53] mx-auto animate-pulse" />
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="w-32 h-32 border-4 border-purple-200 border-t-[#160B53] rounded-full animate-spin"></div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <h2 className="text-3xl font-bold text-gray-800 mb-3">
+                    Finding Your Perfect Style...
+                  </h2>
+                  <p className="text-xl text-gray-500 mb-6">
+                    Our AI stylist is analyzing your features
+                  </p>
+                  
+                  {/* Progress Messages */}
+                  <div className="space-y-3 text-lg text-gray-600">
+                    <p className="animate-pulse">✨ Analyzing face shape...</p>
+                    <p className="animate-pulse delay-100">🎨 Matching skin tone...</p>
+                    <p className="animate-pulse delay-200">💇 Curating hairstyles...</p>
+                  </div>
                 </div>
-                <h2 className="text-5xl font-bold text-gray-800 mb-4">
-                  Picture Saved in Cache
-                </h2>
-                <p className="text-2xl text-gray-600">
-                  Your photo has been captured and saved
-                </p>
-              </div>
+              ) : (
+                /* Normal Preview State */
+                <>
+                  <div className="text-center mb-6">
+                    <h2 className="text-3xl font-bold text-gray-800">
+                      Photo Captured!
+                    </h2>
+                  </div>
 
-              {/* Photo Preview */}
-              <div className="mb-8 rounded-xl overflow-hidden border-4 border-gray-200 bg-gray-100">
-                <img
-                  src={capturedUserImage}
-                  alt="Your captured photo"
-                  className="w-full h-auto object-contain max-h-[500px] mx-auto"
-                />
-              </div>
+                  {/* Photo Preview */}
+                  <div className="rounded-xl overflow-hidden border-2 border-gray-200 bg-gray-100 mb-6">
+                    <img
+                      src={capturedUserImage}
+                      alt="Your captured photo"
+                      className="w-full h-auto max-h-[55vh] object-contain mx-auto"
+                    />
+                  </div>
+                  
+                  {/* Detection Results - Side by side */}
+                  <div className="flex gap-4 mb-6">
+                    {/* Face Shape */}
+                    <div className="flex-1 bg-purple-50 rounded-xl p-5 border-2 border-purple-200 text-center">
+                      <p className="text-base text-purple-600 font-medium mb-2">Face Shape</p>
+                      <p className="text-2xl font-bold text-purple-800 capitalize">
+                        {aiAnalysis?.faceShape || 'Detecting...'}
+                      </p>
+                    </div>
+                    
+                    {/* Skin Tone */}
+                    <div className="flex-1 bg-orange-50 rounded-xl p-5 border-2 border-orange-200 text-center">
+                      <p className="text-base text-orange-600 font-medium mb-2">Skin Tone</p>
+                      <div className="flex items-center justify-center gap-3">
+                        <div 
+                          className="w-8 h-8 rounded-full border-2 border-orange-300"
+                          style={{ backgroundColor: aiAnalysis?.skinTone?.color || '#E0AC69' }}
+                        />
+                        <p className="text-2xl font-bold text-orange-800 capitalize">
+                          {aiAnalysis?.skinTone?.label || aiAnalysis?.skinColor || 'Detecting...'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
 
-              {/* Action Buttons */}
-              <div className="flex gap-6 justify-center">
-                <Button
-                  onClick={handleRetakePhoto}
-                  variant="outline"
-                  className="text-3xl px-12 py-8 h-auto rounded-xl border-4 border-gray-300 hover:border-gray-400 hover:bg-gray-50 min-w-[200px]"
-                >
-                  <Camera className="h-10 w-10 mr-4" />
-                  Retake
-                </Button>
-                <Button
-                  onClick={handleContinueFromPreview}
-                  className="bg-[#160B53] hover:bg-[#12094A] text-white text-3xl px-12 py-8 h-auto rounded-xl min-w-[200px] shadow-lg"
-                >
-                  <CheckCircle className="h-10 w-10 mr-4" />
-                  Continue
-                </Button>
-              </div>
+                  {/* Action Buttons */}
+                  <div className="flex gap-4 justify-center">
+                    <Button
+                      onClick={handleRetakePhoto}
+                      variant="outline"
+                      className="text-xl px-8 py-5 h-auto rounded-xl border-2 border-gray-300"
+                    >
+                      <Camera className="h-6 w-6 mr-3" />
+                      Retake
+                    </Button>
+                    <Button
+                      onClick={handleContinueFromPreview}
+                      className="bg-[#160B53] hover:bg-[#12094A] text-white text-xl px-8 py-5 h-auto rounded-xl"
+                    >
+                      <Sparkles className="h-6 w-6 mr-3" />
+                      Get Recommendations
+                    </Button>
+                  </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </div>

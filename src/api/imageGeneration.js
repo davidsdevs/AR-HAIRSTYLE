@@ -3,6 +3,8 @@
  * Handles AI image generation using OpenRouter
  */
 
+import { API_BASE_URL } from './config.js';
+
 export async function generateHairImage(userImage, hairstyle, userData = {}) {
   console.log('═'.repeat(60));
   console.log('🎨 [IMAGE GENERATION] Starting image generation');
@@ -32,10 +34,10 @@ export async function generateHairImage(userImage, hairstyle, userData = {}) {
       userData
     };
     
+    const url = `${API_BASE_URL}/api/generate-image`;
     console.log('🎨 [IMAGE GENERATION] Request body prepared');
-    console.log('🎨 [IMAGE GENERATION] Sending request to:', 'http://localhost:3001/api/generate-image');
+    console.log('🎨 [IMAGE GENERATION] Sending request to:', url);
     
-    const url = 'http://localhost:3001/api/generate-image';
     const t0 = performance.now();
     
     const response = await fetch(url, {

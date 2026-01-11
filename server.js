@@ -13,10 +13,33 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-// OpenRouter API Configuration
-// SECURITY: API key must be set via environment variable - never hardcode!
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+// OpenRouter API Configuration with Key Rotation
+// Support multiple API keys separated by commas
+const OPENROUTER_API_KEYS = (process.env.OPENROUTER_API_KEYS || process.env.OPENROUTER_API_KEY || '')
+  .split(',')
+  .map(key => key.trim())
+  .filter(key => key.length > 0);
+
+let currentKeyIndex = 0;
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+
+// Get current API key
+const getCurrentApiKey = () => {
+  if (OPENROUTER_API_KEYS.length === 0) return null;
+  return OPENROUTER_API_KEYS[currentKeyIndex];
+};
+
+// Rotate to next API key (called when rate limited)
+const rotateApiKey = () => {
+  if (OPENROUTER_API_KEYS.length <= 1) return false;
+  const oldIndex = currentKeyIndex;
+  currentKeyIndex = (currentKeyIndex + 1) % OPENROUTER_API_KEYS.length;
+  console.log(`🔄 [API KEY] Rotated from key ${oldIndex + 1} to key ${currentKeyIndex + 1} of ${OPENROUTER_API_KEYS.length}`);
+  return true;
+};
+
+// Legacy support
+const OPENROUTER_API_KEY = getCurrentApiKey();
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -36,11 +59,14 @@ app.all('/api/*', (req, res, next) => {
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
+  const currentKey = getCurrentApiKey();
   res.json({ 
     status: 'ok', 
     message: 'Server is running',
-    openrouter_configured: !!OPENROUTER_API_KEY,
-    openrouter_key_preview: OPENROUTER_API_KEY ? OPENROUTER_API_KEY.substring(0, 10) + '...' : 'NOT SET'
+    openrouter_configured: !!currentKey,
+    openrouter_key_preview: currentKey ? currentKey.substring(0, 10) + '...' : 'NOT SET',
+    total_api_keys: OPENROUTER_API_KEYS.length,
+    current_key_index: currentKeyIndex + 1
   });
 });
 
@@ -48,23 +74,25 @@ app.get('/api/health', (req, res) => {
 app.post('/api/test-openrouter', async (req, res) => {
   console.log('🧪 [TEST] Testing OpenRouter API...');
   
-  if (!OPENROUTER_API_KEY) {
+  const apiKey = getCurrentApiKey();
+  if (!apiKey) {
     return res.status(500).json({
       success: false,
-      error: 'OPENROUTER_API_KEY not set in environment variables'
+      error: 'OPENROUTER_API_KEYS not set in environment variables'
     });
   }
   
   try {
     const origin = process.env.ORIGIN || 'http://localhost:5173';
-    console.log('🧪 [TEST] API Key:', OPENROUTER_API_KEY.substring(0, 10) + '...');
+    console.log('🧪 [TEST] API Key:', apiKey.substring(0, 10) + '...');
+    console.log('🧪 [TEST] Using key', currentKeyIndex + 1, 'of', OPENROUTER_API_KEYS.length);
     console.log('🧪 [TEST] Origin:', origin);
     console.log('🧪 [TEST] Model: google/gemini-2.5-flash-lite');
     
     const response = await fetch(OPENROUTER_API_URL, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': origin,
         'X-Title': 'Hair Recommendation System'
@@ -93,6 +121,19 @@ app.post('/api/test-openrouter', async (req, res) => {
     console.log('🧪 [TEST] Response body:', responseText.substring(0, 500));
     
     if (!response.ok) {
+      // If rate limited, try rotating to next key
+      if (response.status === 429 || responseText.includes('rate') || responseText.includes('limit')) {
+        if (rotateApiKey()) {
+          return res.status(response.status).json({
+            success: false,
+            error: 'Rate limited - rotated to next API key',
+            status: response.status,
+            response: responseText,
+            rotated: true,
+            new_key_index: currentKeyIndex + 1
+          });
+        }
+      }
       return res.status(response.status).json({
         success: false,
         error: 'OpenRouter API error',
@@ -104,7 +145,9 @@ app.post('/api/test-openrouter', async (req, res) => {
     return res.json({
       success: true,
       status: response.status,
-      response: responseText.substring(0, 500)
+      response: responseText.substring(0, 500),
+      current_key_index: currentKeyIndex + 1,
+      total_keys: OPENROUTER_API_KEYS.length
     });
     
   } catch (error) {
@@ -117,57 +160,37 @@ app.post('/api/test-openrouter', async (req, res) => {
   }
 });
 
-// Validate API key is set
-if (!OPENROUTER_API_KEY) {
-  console.error('⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️');
-  console.error('❌ [ERROR] OPENROUTER_API_KEY is not set!');
-  console.error('❌ [ERROR] Please create a .env file with: OPENROUTER_API_KEY=your_key_here');
-  console.error('❌ [ERROR] AI recommendations will not work without an API key.');
-  console.error('⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️');
+// Validate API keys are set
+// Validate API keys
+if (OPENROUTER_API_KEYS.length === 0) {
+  console.error('⚠️ [WARNING] OPENROUTER_API_KEYS is not set! AI features will not work.');
+} else {
+  console.log(`✅ [API KEYS] Loaded ${OPENROUTER_API_KEYS.length} OpenRouter key(s) for AI features`);
 }
 
-// Hair Recommendation endpoint using OpenRouter
+// Hair Recommendation endpoint using OpenRouter API
 app.post('/api/recommendations', async (req, res) => {
   console.log('═'.repeat(60));
   console.log('🤖 [OPENROUTER] Received recommendation request');
   console.log('═'.repeat(60));
   
-  // Check API key before processing
-  if (!OPENROUTER_API_KEY) {
-    console.error('❌ [ERROR] OPENROUTER_API_KEY is not set!');
+  // Check OpenRouter API key
+  const apiKey = getCurrentApiKey();
+  if (!apiKey) {
+    console.error('❌ [ERROR] No OpenRouter API keys configured!');
     return res.status(401).json({
       success: false,
-      error: 'OpenRouter API error',
-      details: JSON.stringify({
-        error: {
-          message: 'No auth credentials found',
-          code: 401
-        }
-      }),
-      status: 401,
+      error: 'OpenRouter API key not configured',
       fallback: 'rule_based'
     });
   }
   
-  // 🔥 DEBUG: Log raw request body
-  console.log('🔥 [DEBUG] RAW REQUEST BODY:', JSON.stringify(req.body, null, 2));
-  console.log('🔥 [DEBUG] Request body keys:', req.body ? Object.keys(req.body) : 'req.body is null/undefined');
-  console.log('🔥 [DEBUG] userData exists:', !!req.body?.userData);
-  console.log('🔥 [DEBUG] hairstyleOptions exists:', !!req.body?.hairstyleOptions);
-  console.log('🔥 [DEBUG] hairstyleOptions is array:', Array.isArray(req.body?.hairstyleOptions));
-  console.log('🔥 [DEBUG] hairstyleOptions length:', req.body?.hairstyleOptions?.length || 0);
+  console.log(`🔑 [API KEY] Using key ${currentKeyIndex + 1} of ${OPENROUTER_API_KEYS.length}`);
   
   try {
-    const { userData, hairstyleOptions } = req.body;
+    const { userData } = req.body;
     
     if (!userData) {
-      console.log('');
-      console.log('❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌');
-      console.log('❌ [VALIDATION] userData is MISSING');
-      console.log('❌ [VALIDATION] Request body:', JSON.stringify(req.body, null, 2));
-      console.log('❌ [VALIDATION] Returning 400 Bad Request');
-      console.log('❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌');
-      console.log('');
       return res.status(400).json({ 
         success: false, 
         error: 'userData is required',
@@ -175,28 +198,7 @@ app.post('/api/recommendations', async (req, res) => {
       });
     }
     
-    if (!hairstyleOptions || !Array.isArray(hairstyleOptions) || hairstyleOptions.length === 0) {
-      console.log('');
-      console.log('❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌');
-      console.log('❌ [VALIDATION] hairstyleOptions is MISSING or EMPTY');
-      console.log('❌ [VALIDATION] hairstyleOptions type:', typeof hairstyleOptions);
-      console.log('❌ [VALIDATION] hairstyleOptions is array:', Array.isArray(hairstyleOptions));
-      console.log('❌ [VALIDATION] hairstyleOptions length:', hairstyleOptions?.length || 0);
-      console.log('❌ [VALIDATION] Request body:', JSON.stringify(req.body, null, 2));
-      console.log('❌ [VALIDATION] Returning 400 Bad Request');
-      console.log('❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌');
-      console.log('');
-      return res.status(400).json({ 
-        success: false, 
-        error: 'hairstyleOptions array is required and must not be empty',
-        received: {
-          hairstyleOptions,
-          hairstyleOptionsType: typeof hairstyleOptions,
-          hairstyleOptionsIsArray: Array.isArray(hairstyleOptions),
-          hairstyleOptionsLength: hairstyleOptions?.length || 0
-        }
-      });
-    }
+    console.log('✅ [VALIDATION] userData is valid, proceeding with OpenRouter AI');
     
     // Prepare user profile for AI
     const gender = userData.gender || '';
@@ -205,154 +207,95 @@ app.post('/api/recommendations', async (req, res) => {
     const hairLength = userData.hairLength || 'any';
     const hairType = userData.hairType || 'any';
     const stylePreferences = userData.stylePreferences || [];
-    const facialStructure = userData.facialStructure || 'analyzed';
-    const skinColor = userData.skinColor || 'unknown';
     const customDescription = userData.customDescription || '';
     
-    // Prepare available hairstyles for AI
-    const availableHairstyles = hairstyleOptions.map(style => ({
-      id: style.id,
-      name: style.name,
-      category: style.category,
-      hairType: style.hairType,
-      styleTags: style.styleTags || [],
-      faceShapeCompatibility: style.faceShapeCompatibility || {},
-      skinToneCompatibility: style.skinToneCompatibility || {}
-    }));
-    
     // Create detailed prompt for AI
-    const prompt = `You are a professional hairstylist AI. Analyze the user's profile and recommend exactly 3 best matching hairstyles from the available options.
+    const prompt = `You are a professional hairstylist AI. Based on the user's profile, recommend the BEST hairstyles.
 
 USER PROFILE:
 - Gender: ${gender || 'not specified'}
 - Face Shape: ${faceShape}
 - Skin Tone: ${skinTone}
-- Facial Structure: ${facialStructure}
-- Skin Color: ${skinColor}
 - Hair Length Preference: ${hairLength}
 - Hair Type Preference: ${hairType}
-- Style Preferences: ${stylePreferences.length > 0 ? stylePreferences.join(', ') : 'none'}${customDescription ? `\n- Additional Requirements/Preferences: ${customDescription}` : ''}
-
-AVAILABLE HAIRSTYLES:
-${JSON.stringify(availableHairstyles, null, 2)}
+- Style Preferences: ${stylePreferences.length > 0 ? stylePreferences.join(', ') : 'none'}${customDescription ? `\n- Additional Requirements: ${customDescription}` : ''}
 
 INSTRUCTIONS:
-1. Select exactly 5 hairstyles from the available options above that best match the user's profile (minimum 5, we will show top 3)
-2. ${customDescription ? `IMPORTANT: Pay special attention to the user's additional requirements/preferences: "${customDescription}". This should strongly influence your recommendations. ` : ''}For each recommendation, provide:
-   - The exact hairstyle ID and name from the available options
-   - A match score (0-100) based on compatibility
-   - A detailed explanation (2-3 sentences) explaining WHY this hairstyle is recommended based on:
-     * Gender appropriateness (${gender ? `for ${gender}` : 'if specified'})
-     * Face shape compatibility
-     * Skin tone compatibility
-     * Hair length preference match
-     * Hair type preference match
-     * Style preference alignment${customDescription ? `\n     * User's specific requirements: "${customDescription}"` : ''}
+1. Generate exactly 5 hairstyle recommendations that BEST match the user
+2. Recommend ANY real hairstyles - be specific (e.g., "Textured French Crop" not just "Short Hair")
+3. Consider trending and classic styles
+4. ${customDescription ? `Pay attention to: "${customDescription}"` : ''}
 
-Return ONLY valid JSON in this exact format (no markdown, no code blocks, just JSON):
+Return ONLY valid JSON (no markdown, no code blocks):
 {
   "recommendations": [
     {
       "id": 1,
-      "name": "Exact Name from Available Options",
+      "name": "Specific Hairstyle Name",
+      "category": "Short/Medium/Long",
+      "hairType": "straight/wavy/curly/coily",
       "matchScore": 95,
-      "whyRecommendation": "Detailed 2-3 sentence explanation of why this hairstyle is perfect for this user."
-    },
-    {
-      "id": 2,
-      "name": "Another Hairstyle Name",
-      "matchScore": 88,
-      "whyRecommendation": "Explanation here."
-    },
-    {
-      "id": 3,
-      "name": "Third Hairstyle Name",
-      "matchScore": 85,
-      "whyRecommendation": "Explanation here."
+      "whyRecommendation": "2-3 sentence explanation why this suits them."
     }
   ]
 }`;
 
     console.log('🤖 [OPENROUTER] Calling OpenRouter API...');
-    console.log('🤖 [OPENROUTER] Model: google/gemini-2.5-flash-lite');
-    console.log('🤖 [OPENROUTER] API URL:', OPENROUTER_API_URL);
-    
-    // Use API key from environment variable
-    const apiKey = OPENROUTER_API_KEY;
-    if (!apiKey) {
-      console.error('❌ [ERROR] OPENROUTER_API_KEY is not set in environment!');
-      throw new Error('OPENROUTER_API_KEY is not configured');
-    }
-    
-    console.log('🤖 [OPENROUTER] API Key (first 10 chars):', apiKey.substring(0, 10) + '...');
-    console.log('🤖 [OPENROUTER] API Key length:', apiKey.length);
-    
-    // Get origin from environment or default to localhost for development
     const origin = process.env.ORIGIN || 'http://localhost:5173';
     
-    // Prepare headers
-    const headers = {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': origin, // Required by OpenRouter - matches your app's domain
-      'X-Title': 'Hair Recommendation System' // Required by OpenRouter - your app name
-    };
-    
-    console.log('🤖 [OPENROUTER] Request headers:', {
-      'Authorization': `Bearer ${apiKey.substring(0, 10)}...`,
-      'Content-Type': headers['Content-Type'],
-      'HTTP-Referer': headers['HTTP-Referer'],
-      'X-Title': headers['X-Title']
-    });
-    
     // Call OpenRouter API
-    const response = await fetch(OPENROUTER_API_URL, {
+    let response = await fetch(OPENROUTER_API_URL, {
       method: 'POST',
-      headers: headers,
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'HTTP-Referer': origin,
+        'X-Title': 'Hair Recommendation System'
+      },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash-lite', // Valid OpenRouter Gemini model
+        model: 'google/gemini-2.0-flash-001',
         messages: [
-          {
-            role: 'system',
-            content: 'ONLY return valid JSON. Do not add commentary. Return only the JSON object with recommendations array.'
-          },
-          {
-            role: 'user',
-            content: prompt
-          }
+          { role: 'system', content: 'Return ONLY valid JSON. No markdown, no commentary.' },
+          { role: 'user', content: prompt }
         ],
-        temperature: 0.2, // Lower temperature for more consistent JSON output
+        temperature: 0.7,
         max_tokens: 2000
       })
     });
     
-    if (!response.ok) {
-      let errorText = '';
-      try {
-        errorText = await response.text();
-      } catch (e) {
-        errorText = 'Could not read error response: ' + e.message;
+    // If rate limited, try rotating to next key
+    if (response.status === 429 || response.status === 402) {
+      console.log('⚠️ [OPENROUTER] Rate limited, trying next API key...');
+      if (rotateApiKey()) {
+        const newApiKey = getCurrentApiKey();
+        response = await fetch(OPENROUTER_API_URL, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${newApiKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': origin,
+            'X-Title': 'Hair Recommendation System'
+          },
+          body: JSON.stringify({
+            model: 'google/gemini-2.0-flash-001',
+            messages: [
+              { role: 'system', content: 'Return ONLY valid JSON. No markdown, no commentary.' },
+              { role: 'user', content: prompt }
+            ],
+            temperature: 0.7,
+            max_tokens: 2000
+          })
+        });
       }
-      
-      console.log('');
-      console.log('⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️');
-      console.log('⚠️ [OPENROUTER] API ERROR - WILL FALL BACK TO RULE-BASED');
-      console.log('⚠️ [OPENROUTER] HTTP Status:', response.status, response.statusText);
-      console.log('⚠️ [OPENROUTER] Error Response:', errorText);
-      console.log('⚠️ [OPENROUTER] Possible reasons:');
-      console.log('   - Invalid API key');
-      console.log('   - Rate limit exceeded');
-      console.log('   - Insufficient credits');
-      console.log('   - Model unavailable');
-      console.log('⚠️ [OPENROUTER] Frontend will use rule-based recommendations');
-      console.log('⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️');
-      console.log('');
-      
+    }
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ [OPENROUTER] API Error:', response.status, errorText);
       return res.status(response.status).json({
         success: false,
         error: 'OpenRouter API error',
         details: errorText,
-        status: response.status,
         fallback: 'rule_based'
       });
     }
@@ -362,9 +305,9 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks, just J
     
     // Extract the AI response
     const aiResponse = data.choices?.[0]?.message?.content || '';
-    console.log('🤖 [OPENROUTER] AI Response preview:', aiResponse.substring(0, 500));
+    console.log('🤖 [OPENROUTER] AI Response preview:', aiResponse.substring(0, 300));
     
-    // Parse JSON from response (may be wrapped in markdown code blocks)
+    // Parse JSON from response
     let recommendations = null;
     let cleanedResponse = aiResponse.trim();
     
@@ -379,30 +322,22 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks, just J
       const parsed = JSON.parse(cleanedResponse);
       recommendations = parsed.recommendations || parsed;
       
-      // Ensure it's an array
       if (!Array.isArray(recommendations)) {
         throw new Error('Response is not an array');
       }
     } catch (parseError) {
-      console.log('');
-      console.log('⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️');
-      console.log('⚠️ [OPENROUTER] JSON PARSE ERROR - WILL FALL BACK TO RULE-BASED');
-      console.log('⚠️ [OPENROUTER] Parse error:', parseError.message);
-      console.log('⚠️ [OPENROUTER] Raw response (first 500 chars):', cleanedResponse.substring(0, 500));
-      console.log('⚠️ [OPENROUTER] Frontend will use rule-based recommendations');
-      console.log('⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️⚠️');
-      console.log('');
+      console.error('❌ [OPENROUTER] JSON Parse Error:', parseError.message);
       
-      // Try to extract JSON array from text
-      const jsonMatch = cleanedResponse.match(/\[[\s\S]*?\]/);
+      // Try to extract JSON from text
+      const jsonMatch = cleanedResponse.match(/\{[\s\S]*"recommendations"[\s\S]*\}/);
       if (jsonMatch) {
         try {
-          recommendations = JSON.parse(jsonMatch[0]);
+          const parsed = JSON.parse(jsonMatch[0]);
+          recommendations = parsed.recommendations;
         } catch (e) {
           return res.status(500).json({
             success: false,
-            error: 'Failed to parse AI response as JSON',
-            details: cleanedResponse.substring(0, 500),
+            error: 'Failed to parse AI response',
             fallback: 'rule_based'
           });
         }
@@ -410,36 +345,26 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks, just J
         return res.status(500).json({
           success: false,
           error: 'AI did not return valid JSON',
-          details: cleanedResponse.substring(0, 500),
           fallback: 'rule_based'
         });
       }
     }
     
-    // Map AI recommendations to match frontend format (get minimum 5, frontend shows top 3)
-    const formattedRecommendations = recommendations.slice(0, Math.max(5, recommendations.length)).map(aiRec => {
-      // Find the matching hairstyle from available options
-      const matchingStyle = hairstyleOptions.find(s => 
-        s.id === aiRec.id || 
-        s.name.toLowerCase() === aiRec.name.toLowerCase()
-      );
-      
-      if (!matchingStyle) {
-        console.warn(`⚠️ [OPENROUTER] Could not find hairstyle: ${aiRec.name} (ID: ${aiRec.id})`);
-        return null;
-      }
-      
-      return {
-        ...matchingStyle,
-        matchScore: Math.min(100, Math.max(0, aiRec.matchScore || 85)),
-        whyRecommendation: aiRec.whyRecommendation || aiRec.reason || 'AI-recommended based on your features',
-        matchReasons: [aiRec.whyRecommendation || aiRec.reason || 'AI-recommended based on your features'],
-        aiGenerated: true
-      };
-    }).filter(Boolean); // Remove null entries
+    // Format recommendations
+    const formattedRecommendations = recommendations.slice(0, 5).map((aiRec, index) => ({
+      id: aiRec.id || index + 1,
+      name: aiRec.name,
+      category: aiRec.category || 'Medium',
+      hairType: aiRec.hairType || 'straight',
+      gender: gender || 'both',
+      matchScore: Math.min(100, Math.max(0, aiRec.matchScore || 85)),
+      whyRecommendation: aiRec.whyRecommendation || 'AI-recommended based on your features',
+      matchReasons: [aiRec.whyRecommendation || 'AI-recommended'],
+      aiGenerated: true
+    }));
     
-    console.log('✅ [OPENROUTER] Successfully generated', formattedRecommendations.length, 'recommendations');
-    console.log('═'.repeat(60));
+    console.log('✅ [OPENROUTER] Generated', formattedRecommendations.length, 'recommendations');
+    console.log('✅ [OPENROUTER] Hairstyles:', formattedRecommendations.map(r => r.name).join(', '));
     
     return res.json({
       success: true,
@@ -448,24 +373,10 @@ Return ONLY valid JSON in this exact format (no markdown, no code blocks, just J
     });
     
   } catch (error) {
-    console.log('');
-    console.log('❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌');
-    console.log('❌ [OPENROUTER] EXCEPTION - WILL FALL BACK TO RULE-BASED');
-    console.log('❌ [OPENROUTER] Error Type:', error.constructor.name);
-    console.log('❌ [OPENROUTER] Error Message:', error.message);
-    console.log('❌ [OPENROUTER] Error Stack:', error.stack);
-    console.log('❌ [OPENROUTER] Possible reasons:');
-    console.log('   - Network error (check internet connection)');
-    console.log('   - OpenRouter API down');
-    console.log('   - Timeout (request took too long)');
-    console.log('❌ [OPENROUTER] Frontend will use rule-based recommendations');
-    console.log('❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌');
-    console.log('');
+    console.error('❌ [OPENROUTER] Exception:', error.message);
     return res.status(500).json({
       success: false,
-      error: 'Internal server error',
-      message: error.message,
-      type: error.constructor.name,
+      error: error.message,
       fallback: 'rule_based'
     });
   }
@@ -501,16 +412,18 @@ app.post('/api/generate-image', async (req, res) => {
     // Get hair color from userData
     const hairColor = userData?.hairColor || '';
     
-    if (!OPENROUTER_API_KEY) {
+    const imageApiKey = getCurrentApiKey();
+    if (!imageApiKey) {
       return res.status(500).json({
         success: false,
-        error: 'OPENROUTER_API_KEY not configured'
+        error: 'No API keys configured'
       });
     }
     
     console.log('🎨 [IMAGE] Generating image with hairstyle:', hairstyle.name);
     console.log('🎨 [IMAGE] User image length:', userImage.length, 'chars');
     console.log('🎨 [IMAGE] Hair color:', hairColor);
+    console.log('🎨 [IMAGE] Using API key', currentKeyIndex + 1, 'of', OPENROUTER_API_KEYS.length);
     
     // Generate detailed hairstyle description based on name and gender
     const getHairstyleDescription = (name, category, hairType, genderParam = '') => {
@@ -595,11 +508,11 @@ Generate the edited image showing this person with the new hairstyle applied acc
     
     console.log('🎨 [IMAGE] Calling OpenRouter API with model: google/gemini-2.5-flash-image');
     
-    // Call OpenRouter API for image generation
-    const response = await fetch(OPENROUTER_API_URL, {
+    // Call OpenRouter API for image generation with key rotation support
+    let response = await fetch(OPENROUTER_API_URL, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${OPENROUTER_API_KEY}`,
+        'Authorization': `Bearer ${imageApiKey}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': origin,
         'X-Title': 'Hair Recommendation System - Image Generation'
@@ -626,6 +539,47 @@ Generate the edited image showing this person with the new hairstyle applied acc
         max_tokens: 1000
       })
     });
+    
+    // If rate limited, try rotating to next key and retry
+    if (response.status === 429 || response.status === 402) {
+      console.log('⚠️ [IMAGE] Rate limited, trying next API key...');
+      
+      if (rotateApiKey()) {
+        const newApiKey = getCurrentApiKey();
+        console.log('🔄 [IMAGE] Retrying with key', currentKeyIndex + 1);
+        
+        response = await fetch(OPENROUTER_API_URL, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${newApiKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': origin,
+            'X-Title': 'Hair Recommendation System - Image Generation'
+          },
+          body: JSON.stringify({
+            model: 'google/gemini-2.5-flash-image',
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: 'text',
+                    text: prompt
+                  },
+                  {
+                    type: 'image_url',
+                    image_url: {
+                      url: userImage
+                    }
+                  }
+                ]
+              }
+            ],
+            max_tokens: 1000
+          })
+        });
+      }
+    }
     
     if (!response.ok) {
       let errorText = '';

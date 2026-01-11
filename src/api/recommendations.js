@@ -1,38 +1,28 @@
 // Hair Recommendation API - Using OpenRouter AI
 // Uses OpenRouter API Key through backend proxy
 
+import { API_BASE_URL } from './config.js';
+
 /**
  * Get AI-powered hairstyle recommendations using OpenRouter AI models via Node.js proxy
+ * AI generates dynamic hairstyle recommendations based on user's features
  * @param {Object} userData - User profile data (faceShape, skinTone, facialStructure, skinColor, preferences)
- * @param {Array} hairstyleOptions - Full array of available hairstyles with metadata
  */
-export async function getHairRecommendations(userData, hairstyleOptions = []) {
+export async function getHairRecommendations(userData) {
   console.log('═'.repeat(60));
   console.log('🤖 [OPENROUTER] START: getHairRecommendations');
-  console.log('🤖 [OPENROUTER] window.location.origin:', window.location.origin);
+  console.log('🤖 [OPENROUTER] AI will generate dynamic hairstyle recommendations');
   console.log('🤖 [OPENROUTER] userData:', JSON.stringify(userData, null, 2));
-  console.log('🤖 [OPENROUTER] hairstyleOptions length:', hairstyleOptions?.length || 0);
   console.log('═'.repeat(60));
   
   try {
-    // 🔥 VALIDATION: Check if data is valid before sending
+    // Validation: Check if userData is valid
     if (!userData) {
       console.error('❌ [VALIDATION] userData is missing!');
       return null;
     }
     
-    if (!hairstyleOptions || !Array.isArray(hairstyleOptions) || hairstyleOptions.length === 0) {
-      console.error('');
-      console.error('❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌');
-      console.error('❌ [VALIDATION] hairstyleOptions is MISSING or EMPTY!');
-      console.error('❌ [VALIDATION] hairstyleOptions:', hairstyleOptions);
-      console.error('❌ [VALIDATION] Cannot call API without hairstyle options');
-      console.error('❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌❌');
-      console.error('');
-      return null;
-    }
-    
-    console.log('✅ [VALIDATION] Data is valid - userData:', !!userData, 'hairstyleOptions:', hairstyleOptions.length);
+    console.log('✅ [VALIDATION] userData is valid');
     
     const requestBody = {
       userData: {
@@ -41,31 +31,18 @@ export async function getHairRecommendations(userData, hairstyleOptions = []) {
         skinTone: userData.skinTone?.label || userData.skinTone?.value || userData.skinTone || 'unknown',
         hairLength: userData.hairLength || 'any',
         hairType: userData.hairType || 'any',
+        hairColor: userData.hairColor || '',
         stylePreferences: userData.stylePreferences || [],
         facialStructure: userData.facialStructure || 'analyzed',
-        skinColor: userData.skinColor || 'unknown'
-      },
-      hairstyleOptions: hairstyleOptions.map(style => ({
-        id: style.id,
-        name: style.name,
-        category: style.category,
-        hairType: style.hairType,
-        styleTags: style.styleTags || [],
-        faceShapeCompatibility: style.faceShapeCompatibility || {},
-        skinToneCompatibility: style.skinToneCompatibility || {}
-      }))
+        skinColor: userData.skinColor || 'unknown',
+        customDescription: userData.customDescription || ''
+      }
     };
     
-    console.log('🔥 [DEBUG] Request body being sent:', JSON.stringify({
-      userDataKeys: Object.keys(requestBody.userData),
-      userDataFaceShape: requestBody.userData.faceShape,
-      userDataSkinTone: requestBody.userData.skinTone,
-      hairstyleOptionsCount: requestBody.hairstyleOptions.length,
-      firstHairstyle: requestBody.hairstyleOptions[0]?.name
-    }, null, 2));
+    console.log('🔥 [DEBUG] Request body being sent:', JSON.stringify(requestBody, null, 2));
 
-    // Use absolute URL to directly call backend (bypasses proxy issues)
-    const url = 'http://localhost:3001/api/recommendations';
+    // Use API_BASE_URL for backend
+    const url = `${API_BASE_URL}/api/recommendations`;
     console.log('🤖 [OPENROUTER] Fetch →', url);
     const t0 = performance.now();
     
@@ -144,7 +121,7 @@ export async function getHairRecommendations(userData, hairstyleOptions = []) {
  */
 export async function testOpenRouterAPI() {
   try {
-    const response = await fetch('/api/health', {
+    const response = await fetch(`${API_BASE_URL}/api/health`, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' }
     });
