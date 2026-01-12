@@ -1,9 +1,9 @@
 services:
-  # Backend API Service
+  # Full Stack Application (Frontend + Backend)
   - type: web
-    name: ar-hairstyle-api
+    name: ar-hairstyle-app
     runtime: node
-    buildCommand: npm install
+    buildCommand: npm install && npm run build
     startCommand: npm run start:prod
     envVars:
       - key: NODE_ENV
@@ -13,18 +13,3 @@ services:
       - key: ORIGIN
         sync: false
     healthCheckPath: /api/health
-
-  # Frontend Static Site
-  - type: web
-    name: ar-hairstyle-frontend
-    runtime: static
-    buildCommand: npm install && npm run build
-    staticPublishPath: ./dist
-    headers:
-      - path: /*
-        name: Cache-Control
-        value: public, max-age=0, must-revalidate
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
