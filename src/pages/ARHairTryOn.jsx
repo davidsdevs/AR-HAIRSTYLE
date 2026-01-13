@@ -57,6 +57,7 @@ export default function ARHairTryOn() {
   const [capturedUserImage, setCapturedUserImage] = useState(null);
   const [showPhotoPreviewModal, setShowPhotoPreviewModal] = useState(false);
   const [showSparkleEffect, setShowSparkleEffect] = useState(false); // Sparkle effect when image is generated
+  const [showRevealTransition, setShowRevealTransition] = useState(false); // Reveal transition from original to new look
   const [hairImages, setHairImages] = useState({}); // Store loaded hair images for AR overlay (legacy - not used with 3D)
   const hairImagesRef = useRef({}); // Ref for synchronous access in callbacks (legacy)
   const [hair3DLoaded, setHair3DLoaded] = useState(false); // Track if 3D hair model is loaded
@@ -2436,14 +2437,20 @@ export default function ARHairTryOn() {
       
       if (generatedImageUrl) {
         console.log('✅ [IMAGE] Image generated successfully!');
-        setGeneratedImage(generatedImageUrl);
         
         // Auto-close modal after successful generation
         setSelectedRecommendationModal(null);
         
-        // Trigger sparkle effect
-        setShowSparkleEffect(true);
-        setTimeout(() => setShowSparkleEffect(false), 3000); // Hide after 3 seconds
+        // Start reveal transition (shows original first, then sweeps to reveal new look)
+        setShowRevealTransition(true);
+        setGeneratedImage(generatedImageUrl);
+        
+        // After reveal animation completes (2s), show sparkle effect
+        setTimeout(() => {
+          setShowRevealTransition(false);
+          setShowSparkleEffect(true);
+          setTimeout(() => setShowSparkleEffect(false), 2500); // Hide sparkles after 2.5 seconds
+        }, 2000);
       } else {
         throw new Error('Failed to generate image. No image returned from API.');
       }
@@ -3977,45 +3984,76 @@ export default function ARHairTryOn() {
             </div>
             
             {/* Show generated image or captured photo */}
-            <div className="relative w-full h-full">
+            <div className="relative w-full h-full overflow-hidden">
               {generatedImage ? (
                 <>
+                  {/* Reveal Transition Effect - Original photo underneath, new look revealed with sweep */}
+                  {showRevealTransition && capturedUserImage && (
+                    <div className="absolute inset-0 z-10">
+                      {/* Original photo (background) */}
+                      <img 
+                        src={capturedUserImage} 
+                        alt="Original look"
+                        className="w-full h-full object-contain bg-black"
+                      />
+                      
+                      {/* Sweep line effect */}
+                      <div className="absolute inset-0 pointer-events-none">
+                        <div className="reveal-sweep-line"></div>
+                      </div>
+                      
+                      {/* "Transforming" text */}
+                      <div className="absolute top-8 left-1/2 transform -translate-x-1/2 z-20">
+                        <div className="bg-gradient-to-r from-purple-600 via-pink-500 to-purple-600 text-white px-6 py-3 rounded-full shadow-2xl animate-pulse">
+                          <div className="flex items-center gap-2">
+                            <Sparkles className="h-5 w-5 animate-spin" />
+                            <span className="text-lg font-bold">Transforming Your Look...</span>
+                            <Sparkles className="h-5 w-5 animate-spin" />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* New generated image with reveal animation */}
                   <img 
                     src={generatedImage} 
                     alt={`You with ${selectedRecommendationModal?.name || 'selected'} hairstyle`}
-                    className="w-full h-full object-contain bg-black"
+                    className={`w-full h-full object-contain bg-black ${showRevealTransition ? 'reveal-new-look' : ''}`}
                   />
                   
                   {/* Sparkle/Bling Effect Overlay */}
                   {showSparkleEffect && (
-                    <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                    <div className="absolute inset-0 pointer-events-none overflow-hidden z-20">
                       {/* Animated sparkles */}
-                      {[...Array(20)].map((_, i) => (
+                      {[...Array(25)].map((_, i) => (
                         <div
                           key={i}
                           className="absolute animate-sparkle"
                           style={{
                             left: `${Math.random() * 100}%`,
                             top: `${Math.random() * 100}%`,
-                            animationDelay: `${Math.random() * 2}s`,
-                            animationDuration: `${1 + Math.random() * 1}s`,
+                            animationDelay: `${Math.random() * 1.5}s`,
+                            animationDuration: `${0.8 + Math.random() * 0.8}s`,
                           }}
                         >
-                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="text-yellow-300">
+                          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" className="text-yellow-300 drop-shadow-lg">
                             <path d="M12 0L14.59 9.41L24 12L14.59 14.59L12 24L9.41 14.59L0 12L9.41 9.41L12 0Z" fill="currentColor"/>
                           </svg>
                         </div>
                       ))}
                       
                       {/* Glowing border effect */}
-                      <div className="absolute inset-0 border-4 border-yellow-400 rounded-lg animate-pulse opacity-75"></div>
+                      <div className="absolute inset-4 border-4 border-yellow-400 rounded-2xl animate-glow-pulse"></div>
                       
                       {/* Success message */}
-                      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-gradient-to-r from-purple-600 to-pink-500 text-white px-8 py-4 rounded-2xl shadow-2xl animate-bounce-in">
-                        <div className="flex items-center gap-3">
-                          <Sparkles className="h-8 w-8 animate-spin" />
-                          <span className="text-2xl font-bold">New Look Generated!</span>
-                          <Sparkles className="h-8 w-8 animate-spin" />
+                      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 animate-bounce-in">
+                        <div className="bg-gradient-to-r from-purple-600 via-pink-500 to-purple-600 text-white px-10 py-5 rounded-2xl shadow-2xl">
+                          <div className="flex items-center gap-4">
+                            <Sparkles className="h-10 w-10 animate-spin" />
+                            <span className="text-3xl font-bold">New Look Ready!</span>
+                            <Sparkles className="h-10 w-10 animate-spin" />
+                          </div>
                         </div>
                       </div>
                     </div>
