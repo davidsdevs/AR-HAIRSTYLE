@@ -704,20 +704,32 @@ Generate the edited image showing this person with the new hairstyle applied acc
 });
 
 // Serve static files in production (AFTER API routes)
-if (isProduction) {
-  const distPath = join(__dirname, 'dist');
-  if (existsSync(distPath)) {
-    app.use(express.static(distPath));
-    console.log('📦 [SERVER] Serving static files from dist/');
-    
-    // Serve index.html for all non-API routes (SPA routing)
-    app.get('*', (req, res) => {
-      if (req.path.startsWith('/api/')) {
-        return res.status(404).json({ success: false, error: 'Not Found' });
-      }
-      res.sendFile(join(distPath, 'index.html'));
-    });
-  }
+const distPath = join(__dirname, 'dist');
+console.log('📁 [SERVER] Checking dist path:', distPath);
+console.log('📁 [SERVER] Dist exists:', existsSync(distPath));
+console.log('📁 [SERVER] NODE_ENV:', process.env.NODE_ENV);
+console.log('📁 [SERVER] isProduction:', isProduction);
+
+if (existsSync(distPath)) {
+  app.use(express.static(distPath));
+  console.log('📦 [SERVER] Serving static files from dist/');
+  
+  // Serve index.html for all non-API routes (SPA routing)
+  app.get('*', (req, res) => {
+    if (req.path.startsWith('/api/')) {
+      return res.status(404).json({ success: false, error: 'Not Found' });
+    }
+    res.sendFile(join(distPath, 'index.html'));
+  });
+} else {
+  console.log('⚠️ [SERVER] dist folder not found! Make sure to run npm run build first.');
+  // Fallback route when no dist
+  app.get('*', (req, res) => {
+    if (req.path.startsWith('/api/')) {
+      return res.status(404).json({ success: false, error: 'Not Found' });
+    }
+    res.status(404).send('App not built. Run npm run build first.');
+  });
 }
 
 app.listen(PORT, () => {
