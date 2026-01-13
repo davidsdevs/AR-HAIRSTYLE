@@ -6,6 +6,7 @@ import { FaceMesh, FACEMESH_TESSELATION, FACEMESH_RIGHT_EYE, FACEMESH_LEFT_EYE, 
 import { SelfieSegmentation } from "@mediapipe/selfie_segmentation";
 import { drawConnectors, drawLandmarks } from "@mediapipe/drawing_utils";
 import * as THREE from 'three';
+import { fetchServices, fetchProducts } from "../lib/firebase";
 
 export default function ARHairTryOn() {
   const videoRef = useRef(null);
@@ -60,7 +61,61 @@ export default function ARHairTryOn() {
   const [hair3DLoaded, setHair3DLoaded] = useState(false); // Track if 3D hair model is loaded
   const hair3DLoadedRef = useRef(false); // Ref for synchronous access in callbacks
   const [isARModeActive, setIsARModeActive] = useState(false); // AR mode in recommendations step
-  const [appMode, setAppMode] = useState(null); // "ai" for AI recommendations, "ar" for AR try-on
+  const [appMode, setAppMode] = useState(null); // "ai" for AI recommendations, "ar" for AR try-on, "services" for services/products
+  const [servicesTab, setServicesTab] = useState("services"); // "services" or "products"
+  const [currentServiceIndex, setCurrentServiceIndex] = useState(0); // For magazine swipe
+  const [currentProductIndex, setCurrentProductIndex] = useState(0); // For magazine swipe
+  
+  // Touch/Swipe handlers for Services
+  const serviceTouchStart = useRef(null);
+  const serviceTouchEnd = useRef(null);
+  const productTouchStart = useRef(null);
+  const productTouchEnd = useRef(null);
+  const minSwipeDistance = 50;
+
+  const onServiceTouchStart = (e) => {
+    serviceTouchEnd.current = null;
+    serviceTouchStart.current = e.targetTouches ? e.targetTouches[0].clientX : e.clientX;
+  };
+
+  const onServiceTouchMove = (e) => {
+    serviceTouchEnd.current = e.targetTouches ? e.targetTouches[0].clientX : e.clientX;
+  };
+
+  const onServiceTouchEnd = () => {
+    if (!serviceTouchStart.current || !serviceTouchEnd.current) return;
+    const distance = serviceTouchStart.current - serviceTouchEnd.current;
+    const isLeftSwipe = distance > minSwipeDistance;
+    const isRightSwipe = distance < -minSwipeDistance;
+    if (isLeftSwipe && currentServiceIndex < salonServices.length - 1) {
+      setCurrentServiceIndex(prev => prev + 1);
+    }
+    if (isRightSwipe && currentServiceIndex > 0) {
+      setCurrentServiceIndex(prev => prev - 1);
+    }
+  };
+
+  const onProductTouchStart = (e) => {
+    productTouchEnd.current = null;
+    productTouchStart.current = e.targetTouches ? e.targetTouches[0].clientX : e.clientX;
+  };
+
+  const onProductTouchMove = (e) => {
+    productTouchEnd.current = e.targetTouches ? e.targetTouches[0].clientX : e.clientX;
+  };
+
+  const onProductTouchEnd = () => {
+    if (!productTouchStart.current || !productTouchEnd.current) return;
+    const distance = productTouchStart.current - productTouchEnd.current;
+    const isLeftSwipe = distance > minSwipeDistance;
+    const isRightSwipe = distance < -minSwipeDistance;
+    if (isLeftSwipe && currentProductIndex < salonProducts.length - 1) {
+      setCurrentProductIndex(prev => prev + 1);
+    }
+    if (isRightSwipe && currentProductIndex > 0) {
+      setCurrentProductIndex(prev => prev - 1);
+    }
+  };
   
   // Keep refs in sync with state for use in callbacks
   useEffect(() => { isARActiveRef.current = isARActive; }, [isARActive]);
@@ -156,6 +211,82 @@ export default function ARHairTryOn() {
   const stylePreferenceOptions = [
     "Professional", "Casual", "Elegant", "Trendy", "Classic", "Bold", "Natural", "Edgy"
   ];
+
+  // Salon Services Data - fetched from Firebase
+  const [salonServices, setSalonServices] = useState([]);
+  const [salonProducts, setSalonProducts] = useState([]);
+  const [isLoadingServices, setIsLoadingServices] = useState(false);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(false);
+
+  // Default fallback data for services
+  const defaultServices = [
+    {
+      id: 1,
+      category: "Haircut",
+      name: "Basic Haircut",
+      description: "Professional haircut with styling",
+      price: "₱150",
+      duration: "30 mins",
+      image: "https://images.unsplash.com/photo-1560066984-138dadb4c035?w=1920&q=80"
+    }
+  ];
+
+  // Default fallback data for products
+  const defaultProducts = [
+    {
+      id: 1,
+      category: "Shampoo",
+      name: "Moisturizing Shampoo",
+      description: "For dry & damaged hair",
+      price: "₱450",
+      brand: "Professional Care",
+      image: "https://images.unsplash.com/photo-1631729371254-42c2892f0e6e?w=1920&q=80"
+    }
+  ];
+
+  // Fetch services from Firebase when entering services page
+  useEffect(() => {
+    if (currentStep === 11 && salonServices.length === 0) {
+      setIsLoadingServices(true);
+      fetchServices()
+        .then((services) => {
+          if (services.length > 0) {
+            setSalonServices(services);
+          } else {
+            setSalonServices(defaultServices);
+          }
+        })
+        .catch((error) => {
+          console.error('Error loading services:', error);
+          setSalonServices(defaultServices);
+        })
+        .finally(() => {
+          setIsLoadingServices(false);
+        });
+    }
+  }, [currentStep]);
+
+  // Fetch products from Firebase when entering products page
+  useEffect(() => {
+    if (currentStep === 12 && salonProducts.length === 0) {
+      setIsLoadingProducts(true);
+      fetchProducts()
+        .then((products) => {
+          if (products.length > 0) {
+            setSalonProducts(products);
+          } else {
+            setSalonProducts(defaultProducts);
+          }
+        })
+        .catch((error) => {
+          console.error('Error loading products:', error);
+          setSalonProducts(defaultProducts);
+        })
+        .finally(() => {
+          setIsLoadingProducts(false);
+        });
+    }
+  }, [currentStep]);
 
   // Helper function to convert HSL to RGB
   const hslToRgb = (h, s, l) => {
@@ -708,19 +839,44 @@ export default function ARHairTryOn() {
     }
     
     // Get face landmarks for positioning
-    const forehead = landmarks[10];
-    const leftTemple = landmarks[54];
-    const rightTemple = landmarks[284];
-    const chin = landmarks[152];
-    const leftEye = landmarks[33];
-    const rightEye = landmarks[263];
-    const topHead = landmarks[10]; // Top of forehead
+    // === FACE LANDMARK POINTS ===
+    // Key landmarks for accurate face measurement
+    const forehead = landmarks[10];        // Top of forehead (hairline)
+    const leftTemple = landmarks[54];      // Left temple
+    const rightTemple = landmarks[284];    // Right temple
+    const chin = landmarks[152];           // Bottom of chin
+    const leftEye = landmarks[33];         // Left eye outer corner
+    const rightEye = landmarks[263];       // Right eye outer corner
+    const leftCheek = landmarks[234];      // Left cheekbone
+    const rightCheek = landmarks[454];     // Right cheekbone
+    const leftEar = landmarks[127];        // Left ear area
+    const rightEar = landmarks[356];       // Right ear area
+    const noseTip = landmarks[1];          // Nose tip for depth reference
+    const leftEyebrow = landmarks[70];     // Left eyebrow outer
+    const rightEyebrow = landmarks[300];   // Right eyebrow outer
     
-    // Calculate face dimensions (mirrored for selfie view)
-    const faceCenterX = canvasWidth - (forehead.x * canvasWidth);
-    const faceTopY = forehead.y * canvasHeight;
-    const faceWidth = Math.abs(rightTemple.x - leftTemple.x) * canvasWidth;
+    // === CALCULATE FACE DIMENSIONS FROM LANDMARKS ===
+    // Face width: distance between temples (widest part of face for hair)
+    const templeWidth = Math.abs(rightTemple.x - leftTemple.x) * canvasWidth;
+    
+    // Cheekbone width: for reference
+    const cheekWidth = Math.abs(rightCheek.x - leftCheek.x) * canvasWidth;
+    
+    // Ear-to-ear width: maximum head width for hair coverage
+    const earToEarWidth = Math.abs(rightEar.x - leftEar.x) * canvasWidth;
+    
+    // Face height: from forehead to chin
     const faceHeight = Math.abs(chin.y - forehead.y) * canvasHeight;
+    
+    // Eye distance: key measurement for proportional scaling
+    const eyeDistance = Math.abs(rightEye.x - leftEye.x) * canvasWidth;
+    
+    // Forehead height: from eyebrows to hairline
+    const foreheadHeight = Math.abs(forehead.y - ((leftEyebrow.y + rightEyebrow.y) / 2)) * canvasHeight;
+    
+    // Face center (mirrored for selfie view)
+    const faceCenterX = canvasWidth - (((leftTemple.x + rightTemple.x) / 2) * canvasWidth);
+    const faceTopY = forehead.y * canvasHeight;
     
     // Calculate head tilt from eyes
     const eyeLeftY = leftEye.y * canvasHeight;
@@ -729,23 +885,46 @@ export default function ARHairTryOn() {
     const eyeRightX = canvasWidth - (rightEye.x * canvasWidth);
     const headTilt = Math.atan2(eyeRightY - eyeLeftY, eyeRightX - eyeLeftX);
     
-    // === ADJUSTABLE PARAMETERS ===
-    // Change these values to fine-tune the hair position and size
-    const HAIR_SCALE = 3.5;        // How big the hair is relative to face width (increase = bigger)
-    const HAIR_Y_OFFSET = 0.3;     // Vertical offset (increase = move down, decrease = move up)
-    const HAIR_X_OFFSET = 0;       // Horizontal offset (positive = move right)
-    const FLIP_VERTICAL = true;    // Set to true if hair appears upside down
-    const FLIP_HORIZONTAL = false; // Set to true if hair appears mirrored wrong
-    // =============================
+    // Calculate face depth/distance from camera using eye distance as reference
+    // Average eye distance is ~63mm, use this to estimate face scale
+    const referenceEyeDistance = 63; // mm (average human interpupillary distance)
+    const faceDepthFactor = eyeDistance / 100; // Normalize based on typical canvas size
     
-    // Calculate hair size based on face width
-    const targetHairWidth = faceWidth * HAIR_SCALE;
-    const scale = targetHairWidth / hairImage.width;
-    const hairWidth = hairImage.width * scale;
-    const hairHeight = hairImage.height * scale;
+    // === DYNAMIC SCALING BASED ON FACE LANDMARKS ===
+    // The hair width should cover from ear to ear with some padding
+    // Use the larger of temple width or ear-to-ear width for full coverage
+    const headWidth = Math.max(templeWidth, earToEarWidth, cheekWidth * 1.3);
+    
+    // Hair should extend beyond the face width to look natural
+    // Scale factor based on actual face measurements
+    const HAIR_WIDTH_MULTIPLIER = 1.8;  // Hair extends 80% beyond head width on each side
+    const HAIR_HEIGHT_RATIO = 1.2;      // Hair height relative to face height
+    
+    // Calculate target hair dimensions based on face landmarks
+    const targetHairWidth = headWidth * HAIR_WIDTH_MULTIPLIER;
+    
+    // Maintain aspect ratio of the hair image
+    const hairAspectRatio = hairImage.height / hairImage.width;
+    const targetHairHeight = targetHairWidth * hairAspectRatio;
+    
+    // Ensure minimum hair height covers the forehead properly
+    const minHairHeight = faceHeight * HAIR_HEIGHT_RATIO;
+    const finalHairHeight = Math.max(targetHairHeight, minHairHeight);
+    const finalHairWidth = finalHairHeight / hairAspectRatio;
+    
+    // Final dimensions
+    const hairWidth = finalHairWidth;
+    const hairHeight = finalHairHeight;
+    
+    // === POSITION ADJUSTMENTS ===
+    const HAIR_Y_OFFSET = 0.35;     // Vertical offset (increase = move down)
+    const HAIR_X_OFFSET = 0;        // Horizontal offset (positive = move right)
+    const FLIP_VERTICAL = true;     // Set to true if hair appears upside down
+    const FLIP_HORIZONTAL = false;  // Set to true if hair appears mirrored wrong
     
     // Position hair centered on head, above forehead
-    const hairX = faceCenterX + (HAIR_X_OFFSET * faceWidth);
+    // Y position: start from forehead and offset upward
+    const hairX = faceCenterX + (HAIR_X_OFFSET * headWidth);
     const hairY = faceTopY - (hairHeight * (0.5 - HAIR_Y_OFFSET));
     
     ctx.save();
@@ -1942,6 +2121,10 @@ export default function ARHairTryOn() {
       setCurrentStep(2); // Go directly to AR try-on
       // Pre-load hair images for AR mode
       loadHair3DModel();
+    } else if (mode === 'services') {
+      setCurrentStep(11); // Go to services page
+    } else if (mode === 'products') {
+      setCurrentStep(12); // Go to products page
     }
   };
 
@@ -2784,7 +2967,7 @@ export default function ARHairTryOn() {
           </div>
           
           {/* Mode Selection Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 sm:gap-8 max-w-4xl mx-auto">
+          <div className="grid grid-cols-2 gap-6 sm:gap-8 max-w-4xl mx-auto">
             {/* AI Recommendation Mode */}
             <button
               onClick={() => handleModeSelect('ai')}
@@ -2822,6 +3005,46 @@ export default function ARHairTryOn() {
               <div className="flex flex-wrap gap-2">
                 <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">Real-time</span>
                 <span className="px-3 py-1 bg-cyan-100 text-cyan-700 rounded-full text-sm font-medium">Interactive</span>
+              </div>
+            </button>
+
+            {/* Services & Products Mode */}
+            <button
+              onClick={() => handleModeSelect('services')}
+              className="group bg-white rounded-3xl p-8 sm:p-10 shadow-xl hover:shadow-2xl border-4 border-transparent hover:border-green-400 transition-all duration-300 hover:scale-105 text-left"
+            >
+              <div className="bg-gradient-to-br from-green-500 to-emerald-500 w-20 h-20 sm:w-24 sm:h-24 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                <Scissors className="h-10 w-10 sm:h-12 sm:w-12 text-white" />
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-3">
+                Our Services
+              </h2>
+              <p className="text-lg text-gray-600 mb-4">
+                Browse our professional salon services and pricing
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <span className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-sm font-medium">Haircut</span>
+                <span className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-sm font-medium">Treatment</span>
+              </div>
+            </button>
+
+            {/* Products Mode */}
+            <button
+              onClick={() => handleModeSelect('products')}
+              className="group bg-white rounded-3xl p-8 sm:p-10 shadow-xl hover:shadow-2xl border-4 border-transparent hover:border-orange-400 transition-all duration-300 hover:scale-105 text-left"
+            >
+              <div className="bg-gradient-to-br from-orange-500 to-amber-500 w-20 h-20 sm:w-24 sm:h-24 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
+                <Gift className="h-10 w-10 sm:h-12 sm:w-12 text-white" />
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-bold text-gray-800 mb-3">
+                Products
+              </h2>
+              <p className="text-lg text-gray-600 mb-4">
+                Shop our professional hair care products
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <span className="px-3 py-1 bg-orange-100 text-orange-700 rounded-full text-sm font-medium">Shampoo</span>
+                <span className="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-sm font-medium">Styling</span>
               </div>
             </button>
           </div>
@@ -5044,6 +5267,317 @@ export default function ARHairTryOn() {
                 Done
               </Button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Step 11: Services - Full Screen Magazine Swipe */}
+      {currentStep === 11 && (
+        <div 
+          className="flex-1 relative overflow-hidden bg-black touch-pan-y"
+          onTouchStart={onServiceTouchStart}
+          onTouchMove={onServiceTouchMove}
+          onTouchEnd={onServiceTouchEnd}
+          onMouseDown={onServiceTouchStart}
+          onMouseMove={(e) => e.buttons === 1 && onServiceTouchMove(e)}
+          onMouseUp={onServiceTouchEnd}
+          onMouseLeave={onServiceTouchEnd}
+        >
+          {/* Loading State */}
+          {isLoadingServices && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-gray-900 to-black text-white z-50">
+              <Loader2 className="h-16 w-16 animate-spin mb-6 text-white/80" />
+              <p className="text-2xl font-light tracking-wider">Loading Services...</p>
+            </div>
+          )}
+
+          {/* No Services State */}
+          {!isLoadingServices && salonServices.length === 0 && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-gray-900 to-black text-white">
+              <Scissors className="h-20 w-20 mb-6 text-white/50" />
+              <p className="text-2xl font-light tracking-wider mb-4">No Services Available</p>
+              <Button
+                onClick={() => setCurrentStep(0)}
+                className="bg-white/20 hover:bg-white/30 text-white"
+              >
+                <ArrowLeft className="h-5 w-5 mr-2" />
+                Back to Menu
+              </Button>
+            </div>
+          )}
+
+          {/* Full Screen Service Slide */}
+          {!isLoadingServices && salonServices.map((service, index) => (
+            <div
+              key={service.id}
+              className={`absolute inset-0 transition-all duration-700 ease-in-out ${
+                index === currentServiceIndex 
+                  ? 'opacity-100 translate-x-0' 
+                  : index < currentServiceIndex 
+                    ? 'opacity-0 -translate-x-full' 
+                    : 'opacity-0 translate-x-full'
+              }`}
+            >
+              {/* Full Screen Background Image with Ken Burns Effect */}
+              <div 
+                className={`absolute inset-0 bg-cover bg-center transition-transform duration-[10000ms] ease-linear ${
+                  index === currentServiceIndex ? 'scale-110' : 'scale-100'
+                }`}
+                style={{ backgroundImage: `url(${service.image})` }}
+              >
+                {/* Animated Gradient Overlay */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent"></div>
+                <div className="absolute inset-0 bg-gradient-to-r from-black/50 via-transparent to-black/50"></div>
+                
+                {/* Animated Particles/Sparkles */}
+                <div className="absolute inset-0 overflow-hidden">
+                  {[...Array(20)].map((_, i) => (
+                    <div
+                      key={i}
+                      className="absolute w-1 h-1 bg-white/30 rounded-full animate-pulse"
+                      style={{
+                        left: `${Math.random() * 100}%`,
+                        top: `${Math.random() * 100}%`,
+                        animationDelay: `${Math.random() * 3}s`,
+                        animationDuration: `${2 + Math.random() * 3}s`
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* Content - Positioned at bottom with staggered animations */}
+              <div className={`relative h-full flex flex-col justify-end text-white px-8 sm:px-16 pb-24 ${
+                index === currentServiceIndex ? 'animate-fade-in' : ''
+              }`}>
+                {/* Category Badge with slide-in effect */}
+                <div className={`transform transition-all duration-700 delay-100 ${
+                  index === currentServiceIndex ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'
+                }`}>
+                  <span className="inline-block px-4 py-2 bg-white/20 backdrop-blur-md rounded-full uppercase tracking-[0.3em] text-xs font-medium text-white/90 mb-4 border border-white/20">
+                    {service.category}
+                  </span>
+                </div>
+
+                {/* Service Name with slide-up effect */}
+                <h1 className={`text-5xl sm:text-7xl lg:text-8xl font-serif font-bold mb-4 tracking-tight drop-shadow-2xl transform transition-all duration-700 delay-200 ${
+                  index === currentServiceIndex ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0'
+                }`}>
+                  <span className="bg-gradient-to-r from-white via-white to-white/80 bg-clip-text">
+                    {service.name}
+                  </span>
+                </h1>
+
+                {/* Animated underline */}
+                <div className={`h-1 bg-gradient-to-r from-white/80 via-white/40 to-transparent mb-6 transform transition-all duration-1000 delay-300 origin-left ${
+                  index === currentServiceIndex ? 'scale-x-100' : 'scale-x-0'
+                }`} style={{ maxWidth: '200px' }}></div>
+
+                {/* Description with fade-in effect */}
+                <p className={`text-lg sm:text-xl lg:text-2xl text-white/90 max-w-2xl mb-8 font-light leading-relaxed transform transition-all duration-700 delay-400 ${
+                  index === currentServiceIndex ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'
+                }`}>
+                  {service.description}
+                </p>
+
+                {/* Price & Duration with pop-in effect */}
+                <div className={`flex items-center gap-4 sm:gap-6 transform transition-all duration-700 delay-500 ${
+                  index === currentServiceIndex ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-8 opacity-0 scale-95'
+                }`}>
+                  <div className="text-center bg-white/10 backdrop-blur-md rounded-2xl px-6 sm:px-8 py-4 border border-white/20 hover:bg-white/20 transition-colors duration-300 hover:scale-105 transform">
+                    <p className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-b from-white to-white/70 bg-clip-text text-transparent">{service.price}</p>
+                    <p className="text-white/60 uppercase tracking-wider text-xs mt-1">Price</p>
+                  </div>
+                  <div className="text-center bg-white/10 backdrop-blur-md rounded-2xl px-6 sm:px-8 py-4 border border-white/20 hover:bg-white/20 transition-colors duration-300 hover:scale-105 transform">
+                    <p className="text-xl sm:text-2xl lg:text-3xl font-bold">{service.duration}</p>
+                    <p className="text-white/60 uppercase tracking-wider text-xs mt-1">Duration</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Decorative corner elements */}
+              <div className="absolute top-20 left-8 w-20 h-20 border-l-2 border-t-2 border-white/20 opacity-50"></div>
+              <div className="absolute top-20 right-8 w-20 h-20 border-r-2 border-t-2 border-white/20 opacity-50"></div>
+            </div>
+          ))}
+
+          {/* Back Button */}
+          <Button
+            onClick={() => {
+              setCurrentStep(0);
+              setCurrentServiceIndex(0);
+            }}
+            className="absolute top-6 left-6 bg-white/10 hover:bg-white/30 text-white border border-white/20 backdrop-blur-md z-10 transition-all duration-300 hover:scale-105"
+          >
+            <ArrowLeft className="h-5 w-5 mr-2" />
+            Back
+          </Button>
+
+          {/* Page Counter with glow effect */}
+          <div className="absolute top-6 right-6 text-white font-medium bg-black/40 backdrop-blur-md px-5 py-2.5 rounded-full z-10 border border-white/10 shadow-lg shadow-black/20">
+            <span className="text-2xl font-bold text-white">{currentServiceIndex + 1}</span>
+            <span className="text-white/50"> / {salonServices.length}</span>
+          </div>
+
+          {/* Swipe Hint with bounce animation */}
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-3 text-white/60 text-sm uppercase tracking-widest z-10">
+            <span className="animate-bounce-left">←</span>
+            <span>Swipe</span>
+            <span className="animate-bounce-right">→</span>
+          </div>
+        </div>
+      )}
+
+      {/* Step 12: Products - Full Screen Magazine Swipe */}
+      {currentStep === 12 && (
+        <div 
+          className="flex-1 relative overflow-hidden bg-black touch-pan-y"
+          onTouchStart={onProductTouchStart}
+          onTouchMove={onProductTouchMove}
+          onTouchEnd={onProductTouchEnd}
+          onMouseDown={onProductTouchStart}
+          onMouseMove={(e) => e.buttons === 1 && onProductTouchMove(e)}
+          onMouseUp={onProductTouchEnd}
+          onMouseLeave={onProductTouchEnd}
+        >
+          {/* Loading State */}
+          {isLoadingProducts && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-gray-900 to-black text-white z-50">
+              <Loader2 className="h-16 w-16 animate-spin mb-6 text-white/80" />
+              <p className="text-2xl font-light tracking-wider">Loading Products...</p>
+            </div>
+          )}
+
+          {/* No Products State */}
+          {!isLoadingProducts && salonProducts.length === 0 && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-gray-900 to-black text-white">
+              <Gift className="h-20 w-20 mb-6 text-white/50" />
+              <p className="text-2xl font-light tracking-wider mb-4">No Products Available</p>
+              <Button
+                onClick={() => setCurrentStep(0)}
+                className="bg-white/20 hover:bg-white/30 text-white"
+              >
+                <ArrowLeft className="h-5 w-5 mr-2" />
+                Back to Menu
+              </Button>
+            </div>
+          )}
+
+          {/* Full Screen Product Slide */}
+          {!isLoadingProducts && salonProducts.map((product, index) => (
+            <div
+              key={product.id}
+              className={`absolute inset-0 transition-all duration-700 ease-in-out ${
+                index === currentProductIndex 
+                  ? 'opacity-100 translate-x-0' 
+                  : index < currentProductIndex 
+                    ? 'opacity-0 -translate-x-full' 
+                    : 'opacity-0 translate-x-full'
+              }`}
+            >
+              {/* Full Screen Background Image with Ken Burns Effect */}
+              <div 
+                className={`absolute inset-0 bg-cover bg-center transition-transform duration-[10000ms] ease-linear ${
+                  index === currentProductIndex ? 'scale-110' : 'scale-100'
+                }`}
+                style={{ backgroundImage: `url(${product.image})` }}
+              >
+                {/* Animated Gradient Overlay */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent"></div>
+                <div className="absolute inset-0 bg-gradient-to-r from-black/50 via-transparent to-black/50"></div>
+              </div>
+
+              {/* Content - Positioned at bottom with staggered animations */}
+              <div className={`relative h-full flex flex-col justify-end text-white px-8 sm:px-16 pb-24 ${
+                index === currentProductIndex ? 'animate-fade-in' : ''
+              }`}>
+                {/* Brand & Category Badges with slide-in effect */}
+                <div className={`flex items-center gap-3 mb-4 transform transition-all duration-700 delay-100 ${
+                  index === currentProductIndex ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'
+                }`}>
+                  <span className="inline-block px-4 py-2 bg-gradient-to-r from-amber-500/80 to-orange-500/80 backdrop-blur-md rounded-full uppercase tracking-[0.2em] text-xs font-bold text-white border border-white/20">
+                    {product.brand}
+                  </span>
+                  <span className="inline-block px-3 py-1.5 bg-white/10 backdrop-blur-md rounded-full uppercase tracking-[0.2em] text-xs font-medium text-white/70 border border-white/10">
+                    {product.category}
+                  </span>
+                </div>
+
+                {/* Product Name with slide-up effect */}
+                <h1 className={`text-5xl sm:text-7xl lg:text-8xl font-serif font-bold mb-4 tracking-tight drop-shadow-2xl transform transition-all duration-700 delay-200 ${
+                  index === currentProductIndex ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0'
+                }`}>
+                  <span className="bg-gradient-to-r from-white via-white to-white/80 bg-clip-text">
+                    {product.name}
+                  </span>
+                </h1>
+
+                {/* Animated underline */}
+                <div className={`h-1 bg-gradient-to-r from-amber-400 via-orange-400 to-transparent mb-6 transform transition-all duration-1000 delay-300 origin-left ${
+                  index === currentProductIndex ? 'scale-x-100' : 'scale-x-0'
+                }`} style={{ maxWidth: '200px' }}></div>
+
+                {/* Description with fade-in effect */}
+                <p className={`text-lg sm:text-xl lg:text-2xl text-white/90 max-w-2xl mb-8 font-light leading-relaxed transform transition-all duration-700 delay-400 ${
+                  index === currentProductIndex ? 'translate-y-0 opacity-100' : 'translate-y-8 opacity-0'
+                }`}>
+                  {product.description}
+                </p>
+
+                {/* Price & Rating with pop-in effect */}
+                <div className={`flex items-center gap-4 sm:gap-6 transform transition-all duration-700 delay-500 ${
+                  index === currentProductIndex ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-8 opacity-0 scale-95'
+                }`}>
+                  <div className="text-center bg-gradient-to-br from-white/20 to-white/5 backdrop-blur-md rounded-2xl px-6 sm:px-8 py-4 border border-white/20 hover:from-white/30 hover:to-white/10 transition-all duration-300 hover:scale-105 transform shadow-xl">
+                    <p className="text-3xl sm:text-4xl lg:text-5xl font-bold bg-gradient-to-b from-white to-white/70 bg-clip-text text-transparent">{product.price}</p>
+                    <p className="text-white/60 uppercase tracking-wider text-xs mt-1">Price</p>
+                  </div>
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="flex gap-1">
+                      {[1,2,3,4,5].map(i => (
+                        <Star 
+                          key={i} 
+                          className={`h-7 w-7 sm:h-8 sm:w-8 fill-yellow-400 text-yellow-400 drop-shadow-lg transform transition-all duration-300 hover:scale-125 ${
+                            index === currentProductIndex ? 'animate-star-pop' : ''
+                          }`}
+                          style={{ animationDelay: `${0.5 + i * 0.1}s` }}
+                        />
+                      ))}
+                    </div>
+                    <p className="text-white/50 text-xs uppercase tracking-wider">Top Rated</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Decorative corner elements */}
+              <div className="absolute top-20 left-8 w-20 h-20 border-l-2 border-t-2 border-amber-400/30 opacity-50"></div>
+              <div className="absolute top-20 right-8 w-20 h-20 border-r-2 border-t-2 border-amber-400/30 opacity-50"></div>
+            </div>
+          ))}
+
+          {/* Back Button */}
+          <Button
+            onClick={() => {
+              setCurrentStep(0);
+              setCurrentProductIndex(0);
+            }}
+            className="absolute top-6 left-6 bg-white/10 hover:bg-white/30 text-white border border-white/20 backdrop-blur-md z-10 transition-all duration-300 hover:scale-105"
+          >
+            <ArrowLeft className="h-5 w-5 mr-2" />
+            Back
+          </Button>
+
+          {/* Page Counter with glow effect */}
+          <div className="absolute top-6 right-6 text-white font-medium bg-black/40 backdrop-blur-md px-5 py-2.5 rounded-full z-10 border border-white/10 shadow-lg shadow-black/20">
+            <span className="text-2xl font-bold text-white">{currentProductIndex + 1}</span>
+            <span className="text-white/50"> / {salonProducts.length}</span>
+          </div>
+
+          {/* Swipe Hint with bounce animation */}
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-3 text-white/60 text-sm uppercase tracking-widest z-10">
+            <span className="animate-bounce-left">←</span>
+            <span>Swipe</span>
+            <span className="animate-bounce-right">→</span>
           </div>
         </div>
       )}
