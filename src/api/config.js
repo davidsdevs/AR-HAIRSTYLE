@@ -8,3 +8,7 @@ const isProduction = import.meta.env.PROD;
 // In production, use relative URL (same server serves both frontend and API)
 // In development, use localhost:3001 (Vite proxy will forward to it)
 export const API_BASE_URL = isProduction ? '' : (import.meta.env.VITE_API_URL || 'http://localhost:3001');
+
+// Log for debugging
+console.log('🔧 [CONFIG] isProduction:', isProduction);
+console.log('🔧 [CONFIG] API_BASE_URL:', API_BASE_URL || '(empty - using relative URLs)');

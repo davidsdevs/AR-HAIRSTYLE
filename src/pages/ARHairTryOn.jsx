@@ -1915,6 +1915,12 @@ export default function ARHairTryOn() {
     console.log('📊 [RULE-BASED] Using fallback rule-based recommendations');
     setAreRecommendationsAIGenerated(false);
     
+    // Safety check for hairstyleOptions
+    if (!hairstyleOptions || !Array.isArray(hairstyleOptions)) {
+      console.error('❌ [RULE-BASED] hairstyleOptions is not available');
+      return [];
+    }
+    
     // Filter hairstyles by gender if specified
     let availableStyles = hairstyleOptions;
     if (preferences.gender) {
