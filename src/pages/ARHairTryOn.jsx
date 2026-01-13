@@ -4011,7 +4011,7 @@ export default function ARHairTryOn() {
                   <img 
                     src={generatedImage} 
                     alt={`You with ${selectedRecommendationModal?.name || 'selected'} hairstyle`}
-                    className="absolute inset-0 w-full h-full object-contain bg-black"
+                    className="absolute inset-0 w-full h-full object-cover"
                   />
                   
                   {/* Reveal Transition Effect - Original photo on TOP, clips away to reveal new look */}
@@ -4021,7 +4021,7 @@ export default function ARHairTryOn() {
                       <img 
                         src={capturedUserImage} 
                         alt="Original look"
-                        className="w-full h-full object-contain bg-black"
+                        className="w-full h-full object-cover"
                       />
                       
                       {/* Sweep line effect - follows the clip edge */}
