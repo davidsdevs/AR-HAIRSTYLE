@@ -1003,7 +1003,8 @@ export default function ARHairTryOn() {
   const testAPIConnection = async () => {
     try {
       console.log('🧪 [TEST] Testing API connection...');
-      const response = await fetch('http://localhost:3001/api/health');
+      const apiBase = import.meta.env.PROD ? '' : 'http://localhost:3001';
+      const response = await fetch(`${apiBase}/api/health`);
       const data = await response.json();
       console.log('🧪 [TEST] API Health Check:', data);
       
@@ -1011,7 +1012,7 @@ export default function ARHairTryOn() {
         console.log('✅ [TEST] OpenRouter API is configured');
         
         // Test OpenRouter API directly
-        const testResponse = await fetch('http://localhost:3001/api/test-openrouter', {
+        const testResponse = await fetch(`${apiBase}/api/test-openrouter`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({})
@@ -1936,17 +1937,17 @@ export default function ARHairTryOn() {
         
         // Factor 1: Face Shape Compatibility (Weight: 35%)
         // Get compatibility score for detected face shape
-        if (effectiveFaceShape && style.faceShapeCompatibility[effectiveFaceShape.toLowerCase()]) {
+        if (effectiveFaceShape && style.faceShapeCompatibility && style.faceShapeCompatibility[effectiveFaceShape.toLowerCase()]) {
           factors.faceShape = style.faceShapeCompatibility[effectiveFaceShape.toLowerCase()];
         } else {
-          // Default compatibility if face shape not found
+          // Default compatibility if face shape not found or no compatibility data
           factors.faceShape = 70;
         }
         matchScore += factors.faceShape * 0.35;
         
         // Factor 2: Skin Tone Compatibility (Weight: 20%)
         // Some hairstyles complement certain skin tones better
-        if (effectiveSkinTone && style.skinToneCompatibility[effectiveSkinTone.value]) {
+        if (effectiveSkinTone && style.skinToneCompatibility && style.skinToneCompatibility[effectiveSkinTone.value]) {
           factors.skinTone = style.skinToneCompatibility[effectiveSkinTone.value];
         } else {
           factors.skinTone = 75;
