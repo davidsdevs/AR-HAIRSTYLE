@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "../ui/button";
 import { Card, CardContent } from "../ui/card";
-import { Camera, Sparkles, Heart, CheckCircle, X, Loader2, Sparkle, Scan, Brain, CheckCircle2, AlertCircle, AlertTriangle, Palette, ArrowRight, Scissors, Mic, MicOff, ArrowLeft, User, Scissors as ScissorsIcon, Palette as PaletteIcon, Sparkles as SparklesIcon, Type, Volume2, UserCircle, Users, Briefcase, Shirt, Crown, Zap, Leaf, Flame, TrendingUp, Coffee, Music, Gift, Trophy, Star, Award, Target, Maximize2 as Ruler, Settings, Eye } from "lucide-react";
+import { Camera, Sparkles, Heart, CheckCircle, X, Loader2, Sparkle, Scan, Brain, CheckCircle2, AlertCircle, AlertTriangle, Palette, ArrowRight, Scissors, Mic, MicOff, ArrowLeft, User, Scissors as ScissorsIcon, Palette as PaletteIcon, Sparkles as SparklesIcon, Type, Volume2, UserCircle, Users, Briefcase, Shirt, Crown, Zap, Leaf, Flame, TrendingUp, Coffee, Music, Gift, Trophy, Star, Award, Target, Maximize2 as Ruler, Settings, Eye, ChevronLeft, ChevronRight } from "lucide-react";
 import { FaceMesh, FACEMESH_TESSELATION, FACEMESH_RIGHT_EYE, FACEMESH_LEFT_EYE, FACEMESH_FACE_OVAL } from "@mediapipe/face_mesh";
 import { SelfieSegmentation } from "@mediapipe/selfie_segmentation";
 import { drawConnectors, drawLandmarks } from "@mediapipe/drawing_utils";
@@ -58,6 +58,9 @@ export default function ARHairTryOn() {
   const [showPhotoPreviewModal, setShowPhotoPreviewModal] = useState(false);
   const [showSparkleEffect, setShowSparkleEffect] = useState(false); // Sparkle effect when image is generated
   const [showRevealTransition, setShowRevealTransition] = useState(false); // Reveal transition from original to new look
+  const [compareSliderPosition, setCompareSliderPosition] = useState(50); // Before/after slider position (0-100)
+  const [isDraggingSlider, setIsDraggingSlider] = useState(false); // Track if user is dragging the slider
+  const compareContainerRef = useRef(null); // Ref for the comparison container
   const [hairImages, setHairImages] = useState({}); // Store loaded hair images for AR overlay (legacy - not used with 3D)
   const hairImagesRef = useRef({}); // Ref for synchronous access in callbacks (legacy)
   const [hair3DLoaded, setHair3DLoaded] = useState(false); // Track if 3D hair model is loaded
@@ -2462,15 +2465,30 @@ export default function ARHairTryOn() {
         // Set the generated image first (it's now preloaded)
         setGeneratedImage(generatedImageUrl);
         
-        // Start reveal transition (shows original first, then sweeps to reveal new look)
+        // Start with slider at 0 (showing original), then animate to reveal new look
+        setCompareSliderPosition(0);
         setShowRevealTransition(true);
         
-        // After reveal animation completes (2s), show sparkle effect
-        setTimeout(() => {
-          setShowRevealTransition(false);
-          setShowSparkleEffect(true);
-          setTimeout(() => setShowSparkleEffect(false), 2500); // Hide sparkles after 2.5 seconds
-        }, 2000);
+        // Animate slider from 0 to 100 over 2 seconds
+        let startTime = Date.now();
+        const animateDuration = 2000;
+        const animateSlider = () => {
+          const elapsed = Date.now() - startTime;
+          const progress = Math.min(elapsed / animateDuration, 1);
+          // Ease out cubic for smooth deceleration
+          const easeOut = 1 - Math.pow(1 - progress, 3);
+          setCompareSliderPosition(easeOut * 100);
+          
+          if (progress < 1) {
+            requestAnimationFrame(animateSlider);
+          } else {
+            // Animation complete, show sparkle effect
+            setShowRevealTransition(false);
+            setShowSparkleEffect(true);
+            setTimeout(() => setShowSparkleEffect(false), 2500);
+          }
+        };
+        requestAnimationFrame(animateSlider);
       } else {
         throw new Error('Failed to generate image. No image returned from API.');
       }
@@ -4003,38 +4021,98 @@ export default function ARHairTryOn() {
               </Button>
             </div>
             
-            {/* Show generated image or captured photo */}
-            <div className="relative w-full h-full overflow-hidden bg-black">
-              {generatedImage ? (
+            {/* Show generated image with before/after slider or captured photo */}
+            <div 
+              ref={compareContainerRef}
+              className="relative w-full h-full overflow-hidden bg-black select-none"
+              onMouseMove={(e) => {
+                if (isDraggingSlider && compareContainerRef.current && generatedImage && capturedUserImage && !showRevealTransition) {
+                  const rect = compareContainerRef.current.getBoundingClientRect();
+                  const x = e.clientX - rect.left;
+                  const percentage = Math.max(0, Math.min(100, (x / rect.width) * 100));
+                  setCompareSliderPosition(percentage);
+                }
+              }}
+              onMouseUp={() => setIsDraggingSlider(false)}
+              onMouseLeave={() => setIsDraggingSlider(false)}
+              onTouchMove={(e) => {
+                if (isDraggingSlider && compareContainerRef.current && generatedImage && capturedUserImage && !showRevealTransition) {
+                  const rect = compareContainerRef.current.getBoundingClientRect();
+                  const touch = e.touches[0];
+                  const x = touch.clientX - rect.left;
+                  const percentage = Math.max(0, Math.min(100, (x / rect.width) * 100));
+                  setCompareSliderPosition(percentage);
+                }
+              }}
+              onTouchEnd={() => setIsDraggingSlider(false)}
+            >
+              {generatedImage && capturedUserImage ? (
                 <>
-                  {/* New generated image (BOTTOM LAYER - revealed as original fades) */}
+                  {/* New generated image (BOTTOM LAYER - full width) */}
                   <img 
                     src={generatedImage} 
-                    alt={`You with ${selectedRecommendationModal?.name || 'selected'} hairstyle`}
+                    alt="New look"
                     className="absolute inset-0 w-full h-full object-cover"
+                    draggable={false}
                   />
                   
-                  {/* Reveal Transition Effect - Original photo on TOP, clips away to reveal new look */}
-                  {showRevealTransition && capturedUserImage && (
-                    <div className="absolute inset-0 z-10 reveal-original-container">
-                      {/* Original photo (clips away from right to left) */}
-                      <img 
-                        src={capturedUserImage} 
-                        alt="Original look"
-                        className="w-full h-full object-cover"
-                      />
-                      
-                      {/* Sweep line effect - follows the clip edge */}
-                      <div className="reveal-sweep-line"></div>
-                      
-                      {/* "Transforming" text */}
-                      <div className="absolute top-8 left-1/2 transform -translate-x-1/2 z-20">
-                        <div className="bg-gradient-to-r from-purple-600 via-pink-500 to-purple-600 text-white px-6 py-3 rounded-full shadow-2xl animate-pulse">
-                          <div className="flex items-center gap-2">
-                            <Sparkles className="h-5 w-5 animate-spin" />
-                            <span className="text-lg font-bold">Transforming Your Look...</span>
-                            <Sparkles className="h-5 w-5 animate-spin" />
-                          </div>
+                  {/* Original photo (TOP LAYER - clipped by slider position) */}
+                  <div 
+                    className="absolute inset-0 overflow-hidden"
+                    style={{ clipPath: `inset(0 ${100 - compareSliderPosition}% 0 0)` }}
+                  >
+                    <img 
+                      src={capturedUserImage} 
+                      alt="Original look"
+                      className="w-full h-full object-cover"
+                      draggable={false}
+                    />
+                  </div>
+                  
+                  {/* Draggable Slider Line */}
+                  <div 
+                    className="absolute top-0 bottom-0 z-10 cursor-ew-resize"
+                    style={{ left: `${compareSliderPosition}%`, transform: 'translateX(-50%)' }}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      if (!showRevealTransition) setIsDraggingSlider(true);
+                    }}
+                    onTouchStart={(e) => {
+                      if (!showRevealTransition) setIsDraggingSlider(true);
+                    }}
+                  >
+                    {/* Glowing line */}
+                    <div className="w-1 h-full bg-gradient-to-b from-purple-400 via-pink-500 to-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.8),0_0_30px_rgba(236,72,153,0.6)]"></div>
+                    
+                    {/* Slider handle */}
+                    <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-12 h-12 bg-white rounded-full shadow-2xl flex items-center justify-center border-4 border-purple-500">
+                      <div className="flex items-center gap-0.5">
+                        <ChevronLeft className="h-5 w-5 text-purple-600" />
+                        <ChevronRight className="h-5 w-5 text-purple-600" />
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Labels */}
+                  {!showRevealTransition && !showSparkleEffect && (
+                    <>
+                      <div className="absolute bottom-4 left-4 bg-black/70 text-white px-3 py-1.5 rounded-full text-sm font-medium">
+                        Before
+                      </div>
+                      <div className="absolute bottom-4 right-4 bg-gradient-to-r from-purple-600 to-pink-500 text-white px-3 py-1.5 rounded-full text-sm font-medium">
+                        After ✨
+                      </div>
+                    </>
+                  )}
+                  
+                  {/* Transforming text during animation */}
+                  {showRevealTransition && (
+                    <div className="absolute top-8 left-1/2 transform -translate-x-1/2 z-20">
+                      <div className="bg-gradient-to-r from-purple-600 via-pink-500 to-purple-600 text-white px-6 py-3 rounded-full shadow-2xl animate-pulse">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="h-5 w-5 animate-spin" />
+                          <span className="text-lg font-bold">Transforming Your Look...</span>
+                          <Sparkles className="h-5 w-5 animate-spin" />
                         </div>
                       </div>
                     </div>
