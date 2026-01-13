@@ -4108,22 +4108,23 @@ export default function ARHairTryOn() {
             >
               {generatedImage && capturedUserImage ? (
                 <>
-                  {/* New generated image (BOTTOM LAYER - full width) */}
+                  {/* Original photo (BOTTOM LAYER - full width, on the left side conceptually) */}
                   <img 
-                    src={generatedImage} 
-                    alt="New look"
+                    src={capturedUserImage} 
+                    alt="Original look"
                     className="absolute inset-0 w-full h-full object-cover"
                     draggable={false}
                   />
                   
-                  {/* Original photo (TOP LAYER - clipped by slider position) */}
+                  {/* New generated image (TOP LAYER - revealed from left to right) */}
+                  {/* When slider is at 0%, new is hidden. When at 100%, new is fully visible */}
                   <div 
                     className="absolute inset-0 overflow-hidden"
                     style={{ clipPath: `inset(0 ${100 - compareSliderPosition}% 0 0)` }}
                   >
                     <img 
-                      src={capturedUserImage} 
-                      alt="Original look"
+                      src={generatedImage} 
+                      alt="New look"
                       className="w-full h-full object-cover"
                       draggable={false}
                     />

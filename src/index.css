@@ -1270,13 +1270,13 @@ input[type="range"]::-moz-range-track {
 }
 
 
-/* Reveal Transition Effect - Sweep from right to left */
+/* Reveal Transition Effect - Sweep from left to right (original underneath, new revealed on top) */
 @keyframes reveal-clip-away {
   0% {
-    clip-path: inset(0 0 0 0);
+    clip-path: inset(0 100% 0 0);
   }
   100% {
-    clip-path: inset(0 0 0 100%);
+    clip-path: inset(0 0 0 0);
   }
 }
 
@@ -1286,11 +1286,10 @@ input[type="range"]::-moz-range-track {
   }
   100% {
     left: 100%;
-    transform: translateX(-100%);
   }
 }
 
-/* Container for original image that clips away */
+/* Container for new image that gets revealed */
 .reveal-original-container {
   animation: reveal-clip-away 2s ease-in-out forwards;
 }
