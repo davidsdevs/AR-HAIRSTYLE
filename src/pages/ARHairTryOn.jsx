@@ -2437,13 +2437,33 @@ export default function ARHairTryOn() {
       
       if (generatedImageUrl) {
         console.log('✅ [IMAGE] Image generated successfully!');
+        console.log('🖼️ [IMAGE] Preloading generated image...');
+        
+        // Preload the generated image first before showing transition
+        const preloadImage = new Image();
+        preloadImage.src = generatedImageUrl;
+        
+        await new Promise((resolve, reject) => {
+          preloadImage.onload = () => {
+            console.log('✅ [IMAGE] Image preloaded successfully!');
+            resolve();
+          };
+          preloadImage.onerror = () => {
+            console.warn('⚠️ [IMAGE] Image preload failed, continuing anyway');
+            resolve(); // Continue even if preload fails
+          };
+          // Timeout after 5 seconds
+          setTimeout(resolve, 5000);
+        });
         
         // Auto-close modal after successful generation
         setSelectedRecommendationModal(null);
         
+        // Set the generated image first (it's now preloaded)
+        setGeneratedImage(generatedImageUrl);
+        
         // Start reveal transition (shows original first, then sweeps to reveal new look)
         setShowRevealTransition(true);
-        setGeneratedImage(generatedImageUrl);
         
         // After reveal animation completes (2s), show sparkle effect
         setTimeout(() => {
@@ -3984,23 +4004,28 @@ export default function ARHairTryOn() {
             </div>
             
             {/* Show generated image or captured photo */}
-            <div className="relative w-full h-full overflow-hidden">
+            <div className="relative w-full h-full overflow-hidden bg-black">
               {generatedImage ? (
                 <>
-                  {/* Reveal Transition Effect - Original photo underneath, new look revealed with sweep */}
+                  {/* New generated image (BOTTOM LAYER - revealed as original fades) */}
+                  <img 
+                    src={generatedImage} 
+                    alt={`You with ${selectedRecommendationModal?.name || 'selected'} hairstyle`}
+                    className="absolute inset-0 w-full h-full object-contain bg-black"
+                  />
+                  
+                  {/* Reveal Transition Effect - Original photo on TOP, clips away to reveal new look */}
                   {showRevealTransition && capturedUserImage && (
-                    <div className="absolute inset-0 z-10">
-                      {/* Original photo (background) */}
+                    <div className="absolute inset-0 z-10 reveal-original-container">
+                      {/* Original photo (clips away from right to left) */}
                       <img 
                         src={capturedUserImage} 
                         alt="Original look"
                         className="w-full h-full object-contain bg-black"
                       />
                       
-                      {/* Sweep line effect */}
-                      <div className="absolute inset-0 pointer-events-none">
-                        <div className="reveal-sweep-line"></div>
-                      </div>
+                      {/* Sweep line effect - follows the clip edge */}
+                      <div className="reveal-sweep-line"></div>
                       
                       {/* "Transforming" text */}
                       <div className="absolute top-8 left-1/2 transform -translate-x-1/2 z-20">
@@ -4014,13 +4039,6 @@ export default function ARHairTryOn() {
                       </div>
                     </div>
                   )}
-                  
-                  {/* New generated image with reveal animation */}
-                  <img 
-                    src={generatedImage} 
-                    alt={`You with ${selectedRecommendationModal?.name || 'selected'} hairstyle`}
-                    className={`w-full h-full object-contain bg-black ${showRevealTransition ? 'reveal-new-look' : ''}`}
-                  />
                   
                   {/* Sparkle/Bling Effect Overlay */}
                   {showSparkleEffect && (
