@@ -710,6 +710,151 @@ console.log('📁 [SERVER] Dist exists:', existsSync(distPath));
 console.log('📁 [SERVER] NODE_ENV:', process.env.NODE_ENV);
 console.log('📁 [SERVER] isProduction:', isProduction);
 
+// Brevo Email Configuration
+const BREVO_API_KEY = process.env.BREVO_API_KEY || '';
+const BREVO_SENDER_EMAIL = process.env.BREVO_SENDER_EMAIL || 'noreply@example.com';
+const BREVO_SENDER_NAME = process.env.BREVO_SENDER_NAME || "David's Salon";
+
+if (BREVO_API_KEY) {
+  console.log('✅ [EMAIL] Brevo API configured');
+} else {
+  console.log('⚠️ [EMAIL] Brevo API key not set - email features disabled');
+}
+
+// Send email with generated image endpoint
+app.post('/api/send-email', async (req, res) => {
+  console.log('📧 [EMAIL] Received email request');
+  
+  if (!BREVO_API_KEY) {
+    return res.status(500).json({
+      success: false,
+      error: 'Email service not configured'
+    });
+  }
+  
+  try {
+    const { email, imageBase64, hairstyleName } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        error: 'Email address is required'
+      });
+    }
+    
+    if (!imageBase64) {
+      return res.status(400).json({
+        success: false,
+        error: 'Image is required'
+      });
+    }
+    
+    console.log('📧 [EMAIL] Sending to:', email);
+    console.log('📧 [EMAIL] Hairstyle:', hairstyleName);
+    
+    // Extract base64 data (remove data:image/...;base64, prefix if present)
+    let base64Data = imageBase64;
+    if (imageBase64.includes('base64,')) {
+      base64Data = imageBase64.split('base64,')[1];
+    }
+    
+    // Send email via Brevo API
+    const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'api-key': BREVO_API_KEY,
+        'content-type': 'application/json'
+      },
+      body: JSON.stringify({
+        sender: {
+          name: BREVO_SENDER_NAME,
+          email: BREVO_SENDER_EMAIL
+        },
+        to: [{ email: email }],
+        subject: `Your New Look - ${hairstyleName || 'Hairstyle Preview'} | David's Salon`,
+        htmlContent: `
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <style>
+              body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 0; padding: 0; background-color: #f5f5f5; }
+              .container { max-width: 600px; margin: 0 auto; background: white; }
+              .header { background: linear-gradient(135deg, #160B53 0%, #6B21A8 100%); padding: 30px; text-align: center; }
+              .header h1 { color: white; margin: 0; font-size: 28px; }
+              .header p { color: rgba(255,255,255,0.9); margin: 10px 0 0; }
+              .content { padding: 30px; text-align: center; }
+              .image-container { margin: 20px 0; }
+              .image-container img { max-width: 100%; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.15); }
+              .hairstyle-name { font-size: 24px; color: #160B53; font-weight: bold; margin: 20px 0 10px; }
+              .cta { margin: 30px 0; }
+              .cta a { background: linear-gradient(135deg, #160B53 0%, #6B21A8 100%); color: white; padding: 15px 40px; text-decoration: none; border-radius: 30px; font-weight: bold; display: inline-block; }
+              .footer { background: #f8f9fa; padding: 20px; text-align: center; color: #666; font-size: 14px; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h1>✨ Your New Look is Ready! ✨</h1>
+                <p>Thank you for visiting David's Salon</p>
+              </div>
+              <div class="content">
+                <p>Here's your AI-generated hairstyle preview:</p>
+                <div class="hairstyle-name">${hairstyleName || 'Your New Hairstyle'}</div>
+                <div class="image-container">
+                  <img src="cid:hairstyle-preview" alt="Your new look" />
+                </div>
+                <p style="color: #666; margin-top: 20px;">Love this look? Visit us to make it a reality!</p>
+                <div class="cta">
+                  <a href="#">Book an Appointment</a>
+                </div>
+              </div>
+              <div class="footer">
+                <p><strong>David's Salon</strong></p>
+                <p>This image was generated using AI technology for preview purposes.</p>
+              </div>
+            </div>
+          </body>
+          </html>
+        `,
+        attachment: [
+          {
+            content: base64Data,
+            name: `${(hairstyleName || 'hairstyle').replace(/[^a-zA-Z0-9]/g, '-')}-preview.png`,
+            contentId: 'hairstyle-preview'
+          }
+        ]
+      })
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('📧 [EMAIL] Brevo API error:', response.status, errorText);
+      return res.status(response.status).json({
+        success: false,
+        error: 'Failed to send email',
+        details: errorText
+      });
+    }
+    
+    const data = await response.json();
+    console.log('✅ [EMAIL] Email sent successfully:', data);
+    
+    return res.json({
+      success: true,
+      message: 'Email sent successfully',
+      messageId: data.messageId
+    });
+    
+  } catch (error) {
+    console.error('📧 [EMAIL] Error:', error);
+    return res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 if (existsSync(distPath)) {
   app.use(express.static(distPath));
   console.log('📦 [SERVER] Serving static files from dist/');

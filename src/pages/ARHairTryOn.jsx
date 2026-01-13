@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Button } from "../ui/button";
 import { Card, CardContent } from "../ui/card";
-import { Camera, Sparkles, Heart, CheckCircle, X, Loader2, Sparkle, Scan, Brain, CheckCircle2, AlertCircle, AlertTriangle, Palette, ArrowRight, Scissors, Mic, MicOff, ArrowLeft, User, Scissors as ScissorsIcon, Palette as PaletteIcon, Sparkles as SparklesIcon, Type, Volume2, UserCircle, Users, Briefcase, Shirt, Crown, Zap, Leaf, Flame, TrendingUp, Coffee, Music, Gift, Trophy, Star, Award, Target, Maximize2 as Ruler, Settings, Eye, ChevronLeft, ChevronRight } from "lucide-react";
+import { Camera, Sparkles, Heart, CheckCircle, X, Loader2, Sparkle, Scan, Brain, CheckCircle2, AlertCircle, AlertTriangle, Palette, ArrowRight, Scissors, Mic, MicOff, ArrowLeft, User, Scissors as ScissorsIcon, Palette as PaletteIcon, Sparkles as SparklesIcon, Type, Volume2, UserCircle, Users, Briefcase, Shirt, Crown, Zap, Leaf, Flame, TrendingUp, Coffee, Music, Gift, Trophy, Star, Award, Target, Maximize2 as Ruler, Settings, Eye, ChevronLeft, ChevronRight, Mail, Send } from "lucide-react";
 import { FaceMesh, FACEMESH_TESSELATION, FACEMESH_RIGHT_EYE, FACEMESH_LEFT_EYE, FACEMESH_FACE_OVAL } from "@mediapipe/face_mesh";
 import { SelfieSegmentation } from "@mediapipe/selfie_segmentation";
 import { drawConnectors, drawLandmarks } from "@mediapipe/drawing_utils";
@@ -61,6 +61,11 @@ export default function ARHairTryOn() {
   const [compareSliderPosition, setCompareSliderPosition] = useState(50); // Before/after slider position (0-100)
   const [isDraggingSlider, setIsDraggingSlider] = useState(false); // Track if user is dragging the slider
   const compareContainerRef = useRef(null); // Ref for the comparison container
+  const [showEmailModal, setShowEmailModal] = useState(false); // Email modal for sending generated image
+  const [emailAddress, setEmailAddress] = useState(''); // Email input
+  const [isSendingEmail, setIsSendingEmail] = useState(false); // Email sending state
+  const [emailSent, setEmailSent] = useState(false); // Email sent success state
+  const [lastGeneratedHairstyleName, setLastGeneratedHairstyleName] = useState(''); // Store hairstyle name for email
   const [hairImages, setHairImages] = useState({}); // Store loaded hair images for AR overlay (legacy - not used with 3D)
   const hairImagesRef = useRef({}); // Ref for synchronous access in callbacks (legacy)
   const [hair3DLoaded, setHair3DLoaded] = useState(false); // Track if 3D hair model is loaded
@@ -2373,6 +2378,58 @@ export default function ARHairTryOn() {
     });
   };
 
+  // Send generated image to email
+  const handleSendEmail = async () => {
+    if (!emailAddress || !generatedImage) return;
+    
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(emailAddress)) {
+      setError('Please enter a valid email address');
+      return;
+    }
+    
+    setIsSendingEmail(true);
+    setEmailSent(false);
+    
+    try {
+      const apiBase = typeof window !== 'undefined' && 
+        (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+        ? 'http://localhost:3001' : '';
+      
+      const response = await fetch(`${apiBase}/api/send-email`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          email: emailAddress,
+          imageBase64: generatedImage,
+          hairstyleName: lastGeneratedHairstyleName
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        console.log('✅ [EMAIL] Sent successfully');
+        setEmailSent(true);
+        setTimeout(() => {
+          setShowEmailModal(false);
+          setEmailAddress('');
+          setEmailSent(false);
+        }, 2000);
+      } else {
+        throw new Error(data.error || 'Failed to send email');
+      }
+    } catch (error) {
+      console.error('❌ [EMAIL] Error:', error);
+      setError(`Failed to send email: ${error.message}`);
+    } finally {
+      setIsSendingEmail(false);
+    }
+  };
+
   // Generate image of user with recommended hairstyle using OpenRouter
   const handleGenerateImage = async () => {
     if (!selectedRecommendationModal) {
@@ -2458,6 +2515,9 @@ export default function ARHairTryOn() {
           // Timeout after 5 seconds
           setTimeout(resolve, 5000);
         });
+        
+        // Store hairstyle name for email
+        setLastGeneratedHairstyleName(selectedRecommendationModal?.name || 'New Hairstyle');
         
         // Auto-close modal after successful generation
         setSelectedRecommendationModal(null);
@@ -4029,7 +4089,7 @@ export default function ARHairTryOn() {
                 if (isDraggingSlider && compareContainerRef.current && generatedImage && capturedUserImage && !showRevealTransition) {
                   const rect = compareContainerRef.current.getBoundingClientRect();
                   const x = e.clientX - rect.left;
-                  const percentage = Math.max(0, Math.min(100, (x / rect.width) * 100));
+                  const percentage = Math.max(10, Math.min(90, (x / rect.width) * 100));
                   setCompareSliderPosition(percentage);
                 }
               }}
@@ -4040,7 +4100,7 @@ export default function ARHairTryOn() {
                   const rect = compareContainerRef.current.getBoundingClientRect();
                   const touch = e.touches[0];
                   const x = touch.clientX - rect.left;
-                  const percentage = Math.max(0, Math.min(100, (x / rect.width) * 100));
+                  const percentage = Math.max(10, Math.min(90, (x / rect.width) * 100));
                   setCompareSliderPosition(percentage);
                 }
               }}
@@ -4093,7 +4153,7 @@ export default function ARHairTryOn() {
                     </div>
                   </div>
                   
-                  {/* Labels */}
+                  {/* Labels and Email Button */}
                   {!showRevealTransition && !showSparkleEffect && (
                     <>
                       <div className="absolute bottom-4 left-4 bg-black/70 text-white px-3 py-1.5 rounded-full text-sm font-medium">
@@ -4102,6 +4162,14 @@ export default function ARHairTryOn() {
                       <div className="absolute bottom-4 right-4 bg-gradient-to-r from-purple-600 to-pink-500 text-white px-3 py-1.5 rounded-full text-sm font-medium">
                         After ✨
                       </div>
+                      {/* Email Button - Top Right */}
+                      <button
+                        onClick={() => setShowEmailModal(true)}
+                        className="absolute top-4 right-4 bg-gradient-to-r from-purple-600 to-pink-500 text-white p-3 rounded-full shadow-lg hover:scale-110 transition-transform z-10"
+                        title="Send to Email"
+                      >
+                        <Mail className="h-6 w-6" />
+                      </button>
                     </>
                   )}
                   
@@ -5766,6 +5834,104 @@ export default function ARHairTryOn() {
             <span className="animate-bounce-left">←</span>
             <span>Swipe</span>
             <span className="animate-bounce-right">→</span>
+          </div>
+        </div>
+      )}
+
+      {/* Email Modal */}
+      {showEmailModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-scale-in">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-gradient-to-r from-purple-600 to-pink-500 rounded-full flex items-center justify-center">
+                  <Mail className="h-6 w-6 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-gray-800">Send to Email</h3>
+                  <p className="text-sm text-gray-500">Get your new look in your inbox</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setShowEmailModal(false);
+                  setEmailAddress('');
+                  setEmailSent(false);
+                }}
+                className="p-2 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+
+            {emailSent ? (
+              /* Success State */
+              <div className="text-center py-8">
+                <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <CheckCircle className="h-10 w-10 text-green-500" />
+                </div>
+                <h4 className="text-xl font-bold text-gray-800 mb-2">Email Sent!</h4>
+                <p className="text-gray-500">Check your inbox for your new look ✨</p>
+              </div>
+            ) : (
+              /* Email Form */
+              <>
+                {/* Preview */}
+                <div className="mb-6">
+                  <div className="relative rounded-xl overflow-hidden bg-gray-100 aspect-square max-h-48 mx-auto">
+                    {generatedImage && (
+                      <img 
+                        src={generatedImage} 
+                        alt="Your new look" 
+                        className="w-full h-full object-cover"
+                      />
+                    )}
+                    <div className="absolute bottom-2 left-2 bg-black/70 text-white px-2 py-1 rounded text-xs">
+                      {lastGeneratedHairstyleName}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Email Input */}
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Your Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={emailAddress}
+                    onChange={(e) => setEmailAddress(e.target.value)}
+                    placeholder="Enter your email"
+                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-purple-500 focus:outline-none transition-colors text-lg"
+                    disabled={isSendingEmail}
+                  />
+                </div>
+
+                {/* Send Button */}
+                <Button
+                  onClick={handleSendEmail}
+                  disabled={!emailAddress || isSendingEmail}
+                  className="w-full bg-gradient-to-r from-purple-600 to-pink-500 hover:from-purple-700 hover:to-pink-600 text-white py-4 rounded-xl text-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isSendingEmail ? (
+                    <div className="flex items-center justify-center gap-2">
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      Sending...
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center gap-2">
+                      <Send className="h-5 w-5" />
+                      Send to My Email
+                    </div>
+                  )}
+                </Button>
+
+                <p className="text-xs text-gray-400 text-center mt-4">
+                  We'll send your AI-generated hairstyle preview to this email
+                </p>
+              </>
+            )}
           </div>
         </div>
       )}

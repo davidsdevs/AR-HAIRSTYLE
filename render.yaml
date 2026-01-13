@@ -39,4 +39,11 @@ services:
         sync: false
       - key: VITE_CLOUDINARY_UPLOAD_PRESET
         sync: false
+      # Brevo Email Configuration
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        sync: false
+      - key: BREVO_SENDER_NAME
+        sync: false
     healthCheckPath: /api/health
