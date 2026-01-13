@@ -56,6 +56,7 @@ export default function ARHairTryOn() {
   const [isGeneratingRecommendations, setIsGeneratingRecommendations] = useState(false);
   const [capturedUserImage, setCapturedUserImage] = useState(null);
   const [showPhotoPreviewModal, setShowPhotoPreviewModal] = useState(false);
+  const [showSparkleEffect, setShowSparkleEffect] = useState(false); // Sparkle effect when image is generated
   const [hairImages, setHairImages] = useState({}); // Store loaded hair images for AR overlay (legacy - not used with 3D)
   const hairImagesRef = useRef({}); // Ref for synchronous access in callbacks (legacy)
   const [hair3DLoaded, setHair3DLoaded] = useState(false); // Track if 3D hair model is loaded
@@ -2436,6 +2437,13 @@ export default function ARHairTryOn() {
       if (generatedImageUrl) {
         console.log('✅ [IMAGE] Image generated successfully!');
         setGeneratedImage(generatedImageUrl);
+        
+        // Auto-close modal after successful generation
+        setSelectedRecommendationModal(null);
+        
+        // Trigger sparkle effect
+        setShowSparkleEffect(true);
+        setTimeout(() => setShowSparkleEffect(false), 3000); // Hide after 3 seconds
       } else {
         throw new Error('Failed to generate image. No image returned from API.');
       }
@@ -3969,24 +3977,63 @@ export default function ARHairTryOn() {
             </div>
             
             {/* Show generated image or captured photo */}
-            {generatedImage ? (
-              <img 
-                src={generatedImage} 
-                alt={`You with ${selectedRecommendationModal?.name || 'selected'} hairstyle`}
-                className="w-full h-full object-contain bg-black"
-              />
-            ) : capturedUserImage ? (
-              <img 
-                src={capturedUserImage} 
-                alt="Your photo"
-                className="w-full h-full object-cover"
-              />
-            ) : (
-              <div className="flex flex-col items-center justify-center text-white">
-                <Sparkles className="h-24 w-24 mb-6 opacity-50" />
-                <p className="text-3xl font-semibold">Generate an image to see preview</p>
-              </div>
-            )}
+            <div className="relative w-full h-full">
+              {generatedImage ? (
+                <>
+                  <img 
+                    src={generatedImage} 
+                    alt={`You with ${selectedRecommendationModal?.name || 'selected'} hairstyle`}
+                    className="w-full h-full object-contain bg-black"
+                  />
+                  
+                  {/* Sparkle/Bling Effect Overlay */}
+                  {showSparkleEffect && (
+                    <div className="absolute inset-0 pointer-events-none overflow-hidden">
+                      {/* Animated sparkles */}
+                      {[...Array(20)].map((_, i) => (
+                        <div
+                          key={i}
+                          className="absolute animate-sparkle"
+                          style={{
+                            left: `${Math.random() * 100}%`,
+                            top: `${Math.random() * 100}%`,
+                            animationDelay: `${Math.random() * 2}s`,
+                            animationDuration: `${1 + Math.random() * 1}s`,
+                          }}
+                        >
+                          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="text-yellow-300">
+                            <path d="M12 0L14.59 9.41L24 12L14.59 14.59L12 24L9.41 14.59L0 12L9.41 9.41L12 0Z" fill="currentColor"/>
+                          </svg>
+                        </div>
+                      ))}
+                      
+                      {/* Glowing border effect */}
+                      <div className="absolute inset-0 border-4 border-yellow-400 rounded-lg animate-pulse opacity-75"></div>
+                      
+                      {/* Success message */}
+                      <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-gradient-to-r from-purple-600 to-pink-500 text-white px-8 py-4 rounded-2xl shadow-2xl animate-bounce-in">
+                        <div className="flex items-center gap-3">
+                          <Sparkles className="h-8 w-8 animate-spin" />
+                          <span className="text-2xl font-bold">New Look Generated!</span>
+                          <Sparkles className="h-8 w-8 animate-spin" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              ) : capturedUserImage ? (
+                <img 
+                  src={capturedUserImage} 
+                  alt="Your photo"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center text-white h-full">
+                  <Sparkles className="h-24 w-24 mb-6 opacity-50" />
+                  <p className="text-3xl font-semibold">Generate an image to see preview</p>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Recommendations Bar - Bottom Section */}
