@@ -31,6 +31,15 @@ const KioskSettings = ({ onClose }) => {
     }
   };
 
+  const formatTime = (time24) => {
+    if (!time24) return '';
+    const [hours, minutes] = time24.split(':');
+    const hour = parseInt(hours);
+    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const hour12 = hour % 12 || 12;
+    return `${hour12}:${minutes} ${ampm}`;
+  };
+
   const formatOperatingHours = (hours) => {
     if (!hours) return 'Not set';
     
@@ -46,7 +55,7 @@ const KioskSettings = ({ onClose }) => {
           <span className="font-medium">{dayLabels[index]}:</span>
           <span>
             {dayHours.isOpen 
-              ? `${dayHours.open} - ${dayHours.close}`
+              ? `${formatTime(dayHours.open)} - ${formatTime(dayHours.close)}`
               : 'Closed'}
           </span>
         </div>
@@ -143,12 +152,6 @@ const KioskSettings = ({ onClose }) => {
                         </div>
                       </div>
                     </div>
-                    
-                    <div className="mt-4 pt-4 border-t border-purple-200">
-                      <p className="text-sm text-gray-600">
-                        <span className="font-medium">Branch ID:</span> {currentBranch.id}
-                      </p>
-                    </div>
                   </div>
                 </div>
               </div>
@@ -210,10 +213,6 @@ const KioskSettings = ({ onClose }) => {
                             {branch.contact}
                           </p>
                         </div>
-                        
-                        <div className="mt-2 pt-2 border-t border-gray-200">
-                          <p className="text-xs text-gray-500 font-mono">ID: {branch.id}</p>
-                        </div>
                       </div>
                     </div>
                   </div>
@@ -224,13 +223,10 @@ const KioskSettings = ({ onClose }) => {
 
           {/* Instructions */}
           <div className="mt-8 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-            <h4 className="font-semibold text-blue-900 mb-2">How to Change Branch</h4>
-            <ol className="text-sm text-blue-800 space-y-1 list-decimal list-inside">
-              <li>Copy the Branch ID from the list above</li>
-              <li>Open your .env file in the project root</li>
-              <li>Update VITE_KIOSK_BRANCH_ID with the new branch ID</li>
-              <li>Restart the application for changes to take effect</li>
-            </ol>
+            <h4 className="font-semibold text-blue-900 mb-2">Need to Change Branch?</h4>
+            <p className="text-sm text-blue-800">
+              Contact your system administrator to update the branch configuration for this kiosk.
+            </p>
           </div>
         </div>
       </div>
