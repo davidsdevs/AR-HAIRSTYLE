@@ -34,6 +34,9 @@ services:
         sync: false
       - key: VITE_FIREBASE_MEASUREMENT_ID
         sync: false
+      # Kiosk Branch Configuration
+      - key: VITE_KIOSK_BRANCH_ID
+        sync: false
       # Cloudinary Configuration
       - key: VITE_CLOUDINARY_CLOUD_NAME
         sync: false
