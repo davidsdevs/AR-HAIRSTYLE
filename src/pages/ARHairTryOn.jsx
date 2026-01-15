@@ -7,6 +7,8 @@ import { SelfieSegmentation } from "@mediapipe/selfie_segmentation";
 import { drawConnectors, drawLandmarks } from "@mediapipe/drawing_utils";
 import * as THREE from 'three';
 import { fetchServices, fetchProducts } from "../lib/firebase";
+import KioskSettings from "../components/KioskSettings";
+import BranchInfo from "../components/BranchInfo";
 
 export default function ARHairTryOn() {
   const videoRef = useRef(null);
@@ -75,6 +77,7 @@ export default function ARHairTryOn() {
   const [servicesTab, setServicesTab] = useState("services"); // "services" or "products"
   const [currentServiceIndex, setCurrentServiceIndex] = useState(0); // For magazine swipe
   const [currentProductIndex, setCurrentProductIndex] = useState(0); // For magazine swipe
+  const [showKioskSettings, setShowKioskSettings] = useState(false); // Kiosk branch settings modal
   
   // Touch/Swipe handlers for Services
   const serviceTouchStart = useRef(null);
@@ -257,17 +260,21 @@ export default function ARHairTryOn() {
   // Fetch services from Firebase when entering services page
   useEffect(() => {
     if (currentStep === 11 && salonServices.length === 0) {
+      console.log('🔄 Loading services from Firebase...');
       setIsLoadingServices(true);
-      fetchServices()
+      fetchServices(true) // true = filter by branch
         .then((services) => {
+          console.log(`✅ Loaded ${services.length} services from Firebase`);
           if (services.length > 0) {
             setSalonServices(services);
+            console.log('📋 Services:', services.map(s => `${s.name} - ${s.price}`));
           } else {
+            console.warn('⚠️ No services found, using default fallback');
             setSalonServices(defaultServices);
           }
         })
         .catch((error) => {
-          console.error('Error loading services:', error);
+          console.error('❌ Error loading services:', error);
           setSalonServices(defaultServices);
         })
         .finally(() => {
@@ -279,17 +286,21 @@ export default function ARHairTryOn() {
   // Fetch products from Firebase when entering products page
   useEffect(() => {
     if (currentStep === 12 && salonProducts.length === 0) {
+      console.log('🔄 Loading products from Firebase...');
       setIsLoadingProducts(true);
-      fetchProducts()
+      fetchProducts(true) // true = filter by branch
         .then((products) => {
+          console.log(`✅ Loaded ${products.length} products from Firebase`);
           if (products.length > 0) {
             setSalonProducts(products);
+            console.log('📦 Products:', products.map(p => `${p.name} - ${p.price}`));
           } else {
+            console.warn('⚠️ No products found, using default fallback');
             setSalonProducts(defaultProducts);
           }
         })
         .catch((error) => {
-          console.error('Error loading products:', error);
+          console.error('❌ Error loading products:', error);
           setSalonProducts(defaultProducts);
         })
         .finally(() => {
@@ -3179,6 +3190,16 @@ export default function ARHairTryOn() {
     >
       {/* Header - Minimalist with centered logo */}
       <div className="bg-white h-14 sm:h-16 md:h-20 lg:h-24 xl:h-28 desktop:h-16 kiosk:h-32 flex items-center justify-center relative px-4 sm:px-8 lg:px-16 xl:px-24 desktop:px-8 flex-shrink-0 border-b-2 border-gray-200 desktop:border-b">
+        {/* Settings Button - Top Left */}
+        <Button
+          variant="outline"
+          onClick={() => setShowKioskSettings(true)}
+          className="absolute left-2 sm:left-4 md:left-8 lg:left-16 xl:left-24 top-1/2 -translate-y-1/2 border-2 border-purple-400 text-purple-700 hover:bg-purple-50 hover:border-purple-600 text-xs sm:text-sm md:text-base lg:text-lg xl:text-xl kiosk:text-2xl px-2 py-1 sm:px-3 sm:py-2 md:px-4 md:py-2 lg:px-6 lg:py-3 xl:px-8 xl:py-4 kiosk:px-12 kiosk:py-6 h-auto rounded-lg sm:rounded-xl shadow-md hover:shadow-lg transition-all"
+        >
+          <Settings className="h-3 w-3 sm:h-4 sm:w-4 md:h-5 md:w-5 lg:h-6 lg:w-6 xl:h-7 xl:w-7 kiosk:h-8 kiosk:w-8 mr-1 sm:mr-2 lg:mr-3" />
+          Branch
+        </Button>
+        
         {/* Centered Logo */}
         <div className="flex items-center justify-center">
           <img 
@@ -3198,6 +3219,11 @@ export default function ARHairTryOn() {
           Reset
         </Button>
       </div>
+      
+      {/* Kiosk Settings Modal */}
+      {showKioskSettings && (
+        <KioskSettings onClose={() => setShowKioskSettings(false)} />
+      )}
 
       {/* Step 1: Wizard-Style Preferences - McDonald's Kiosk Style */}
       {currentStep === 1 && (
@@ -5670,6 +5696,11 @@ export default function ARHairTryOn() {
             Back
           </Button>
 
+          {/* Branch Info */}
+          <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-white/10 backdrop-blur-md px-4 py-2 rounded-full z-10 border border-white/20">
+            <BranchInfo className="text-white" />
+          </div>
+
           {/* Page Counter with glow effect */}
           <div className="absolute top-6 right-6 text-white font-medium bg-black/40 backdrop-blur-md px-5 py-2.5 rounded-full z-10 border border-white/10 shadow-lg shadow-black/20">
             <span className="text-2xl font-bold text-white">{currentServiceIndex + 1}</span>
@@ -5823,6 +5854,11 @@ export default function ARHairTryOn() {
             <ArrowLeft className="h-5 w-5 mr-2" />
             Back
           </Button>
+
+          {/* Branch Info */}
+          <div className="absolute top-6 left-1/2 -translate-x-1/2 bg-white/10 backdrop-blur-md px-4 py-2 rounded-full z-10 border border-white/20">
+            <BranchInfo className="text-white" />
+          </div>
 
           {/* Page Counter with glow effect */}
           <div className="absolute top-6 right-6 text-white font-medium bg-black/40 backdrop-blur-md px-5 py-2.5 rounded-full z-10 border border-white/10 shadow-lg shadow-black/20">
