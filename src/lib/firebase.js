@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs, getDoc, doc, query, where, orderBy } from 'firebase/firestore';
+import { getFirestore, collection, getDocs, getDoc, doc, query, where } from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -24,7 +24,7 @@ const getConfiguredBranchId = () => {
 export const fetchBranches = async () => {
   try {
     const branchesRef = collection(db, 'branches');
-    const q = query(branchesRef, where('isActive', '==', true), orderBy('name'));
+    const q = query(branchesRef, where('isActive', '==', true));
     
     const querySnapshot = await getDocs(q);
     const branches = [];
@@ -47,6 +47,9 @@ export const fetchBranches = async () => {
         updatedBy: data.updatedBy || ''
       });
     });
+    
+    // Sort by name in JavaScript instead of Firestore
+    branches.sort((a, b) => a.name.localeCompare(b.name));
     
     return branches;
   } catch (error) {
